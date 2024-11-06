@@ -9,6 +9,7 @@ import ec.satoolkit.tramoseats.TramoSeatsSpecification;
 import ec.satoolkit.x13.X13Specification;
 import ec.tstoolkit.algorithm.CompositeResults;
 import ec.tstoolkit.algorithm.IProcResults;
+import ec.tstoolkit.algorithm.ProcessingContext;
 import ec.tstoolkit.arima.special.EasterSpec;
 import ec.tstoolkit.information.StatisticalTest;
 import ec.tstoolkit.modelling.DefaultTransformationType;
@@ -85,7 +86,8 @@ public class JDemetraServiceImpl {
         
         try {
             DestSpecificationsModel model=datiSerie.getModello();
-            TSmodelSetup setup = new TSmodelSetup(model, directoryPathExtReg);
+            ProcessingContext context=new ProcessingContext();
+            TSmodelSetup setup = new TSmodelSetup(model, context, directoryPathExtReg);
             //specifications = TramoSeatsSpecification.fromString(model.getSpec());
             specifications = setup.getTsSpec();
         } catch (Exception e) {

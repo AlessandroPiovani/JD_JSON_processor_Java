@@ -17,14 +17,27 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ExtRegDataReaderTSplus {
+    
+    public static String name(String fileName){
+        Matcher matcher = Pattern.compile("[.][^.]+$").matcher(fileName);
+        int last=0;
+        while (matcher.find()){
+            last=matcher.start();
+        }
+        return last == 0 ? fileName : fileName.substring(0, last);
+    }
 
     public static Map<String, TsData> readTsFile(String directoryPath, String fileName, TsFrequency frequency, int startYear, int startPositionInYear) throws IOException {
         // Crea il percorso completo del file
+        
         File file = new File(directoryPath, fileName);
-        String fileNameWithoutExtension = file.getName().replaceFirst("[.][^.]+$", "");
-
+//        int end = Pattern.compile("[.][^.]+$").matcher(fileName).start();
+        //       String fileNameWithoutExtension = fileName.substring(0, end);
+        String fileNameWithoutExtension = name(fileName);
         Map<String, TsData> tsDataMap = new HashMap<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
@@ -37,20 +50,22 @@ public class ExtRegDataReaderTSplus {
 
                 // Inizializza le colonne al primo passaggio
                 if (columns.isEmpty()) {
-                    for (int i = 0; i < values.length; i++) {
+                    for (String value : values) {
                         columns.add(new ArrayList<>());
                     }
                 }
 
                 // Aggiungi i valori alle rispettive colonne
                 for (int i = 0; i < values.length; i++) {
-                    columns.get(i).add(Double.parseDouble(values[i]));
+                    columns.get(i).add(Double.valueOf(values[i]));
                 }
             }
 
             // Crea un oggetto TsData per ogni colonna e aggiungilo alla mappa
+            
             for (int i = 0; i < columns.size(); i++) {
-                String variableName = fileNameWithoutExtension + "_" + (i + 1);
+                String variableName = columns.size() == 1 ? fileNameWithoutExtension
+                        : fileNameWithoutExtension + "_" + (i + 1);
                 double[] valuesArray = columns.get(i).stream().mapToDouble(Double::doubleValue).toArray();
                 TsPeriod firstPeriod = new TsPeriod(frequency, startYear, startPositionInYear);
                 TsData tsData = new TsData(firstPeriod, valuesArray, true);

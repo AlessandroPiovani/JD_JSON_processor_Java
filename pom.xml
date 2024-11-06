@@ -10,9 +10,26 @@
         <dependency>
             <groupId>eu.europa.ec.joinup.sat</groupId>
             <artifactId>demetra-tstoolkit</artifactId>
-            <version>2.2.4</version>
+            <version>2.2.5</version>
             <type>jar</type>
         </dependency>
+        <dependency>
+            <groupId>be.nbb.demetra</groupId>
+            <artifactId>jdr</artifactId>
+            <version>2.2.5</version>
+            <type>jar</type>
+        </dependency>
+        <!-- for jdk >= 17-->
+        <!--dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <version>2.4.0-b180830.0359</version>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish.jaxb</groupId>
+            <artifactId>jaxb-runtime</artifactId>
+            <version>2.4.0-b180830.0438</version>
+        </dependency-->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -22,8 +39,8 @@
     </dependencies>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>20</maven.compiler.source>
-        <maven.compiler.target>20</maven.compiler.target>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
         <exec.mainClass>eu.europa.ec.joinup.sat.jd_json_processor.JD_JSON_processor</exec.mainClass>
     </properties>
 </project>
