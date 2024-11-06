@@ -74,9 +74,11 @@ public class TSmodelSetup {
 
         if (model != null && model.getSpec() != null) {
             String jsonString = model.getSpec();
+            // Don't forget to clone the default spec
             this.tsSpec = TramoSeatsSpecification.fromString(model.getSpec()).clone();
             setupTSmodel(directoryPathExtReg);
         } else {
+            // Don't forget to clone the default spec
             this.tsSpec = TramoSeatsSpecification.RSAfull.clone();
         }
 
