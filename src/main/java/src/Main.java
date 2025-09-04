@@ -30,14 +30,20 @@ public class Main {
             //String localpath = "C:\\Users\\UTENTE\\Desktop\\resources";
             //Map<String, TsData> tsDataMap = reader.readData(localpath + "\\grezziFAT.csv");
             
-            Map<String, TsData> tsDataMap = reader.readData(localpath + "\\grezziTUR.csv");
-            
+            //Map<String, TsData> tsDataMap = reader.readData(localpath + "\\grezziTUR.csv");
+            //Map<String, TsData> tsDataMap = reader.readData(localpath + "\\grezziVEN.csv");
+            Map<String, TsData> tsDataMap = reader.readData(localpath +"\\serie_fatt_per_JD.csv");
+
             //Map<String, TsData> tsDataMap = reader.readData(localpath + "\\rawdata_db_istat_format.csv");           
             String directoryPathExtReg = localpath + "\\regr\\";
 
             //String filePath = localpath + "\\specifications_new_full_TUR_NO_Ramps_and_Iv.txt";
-            String filePath = localpath + "\\specifications_new_full_TUR_Ramps_and_Iv.txt";
-            //String filePath = localpath + "\\specifications_db.txt";
+            //String filePath = localpath + "\\specifications_new_full_TUR_Ramps_and_Iv.txt";
+            String filePath = localpath + "\\specifications_db2.txt";
+            //String filePath = localpath + "\\specifications_new_full_VEN.txt";
+            
+            
+
             List<Map<String, Object>> jsonData = JsonReader.readJsonFile(filePath);
           
             
@@ -72,14 +78,27 @@ public class Main {
                 TramoSeatsSpecification TRAMOSEATSspec = tsModelSetup.getTsSpec();
 
                 CompositeResults rslt = TramoSeatsProcessingFactory.process(tsDataMap.get(seriesName), TRAMOSEATSspec, context);
-                TsData sa_data = rslt.getData("sa", TsData.class);
-                                
+                TsData sa_data  = rslt.getData("sa", TsData.class);
+                TsData cal_data = rslt.getData("ycal", TsData.class);
                 
+                System.out.println("SA series:");
                 System.out.println(sa_data);
-                 
+                System.out.println("Cal. adjusted series:");
+                System.out.println(cal_data);
+                System.out.println("_______________________________________________________________");
+
+                // ADDED for forecasting 
+                TsData yef_data = rslt.getData("y_ef", TsData.class);
+                System.out.println("y_ef:");
+                System.out.println(yef_data);
+                TsData yf_data = rslt.getData("y_f", TsData.class);
+                System.out.println("y_f:");
+                System.out.println(yef_data);
+                Map<String, Class> d = rslt.getDictionary();
+                
                 // add in the multiprocessing each single processing
                 mp.add(seriesName, tsDataMap.get(seriesName) , TRAMOSEATSspec);
-                                               
+                                      
             }
 
             // Save the workspace (the output folder must exist)
