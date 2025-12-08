@@ -24,9 +24,8 @@ public class Main {
 
     public static void main(String[] args) {
         try {
-
             DataReaderCSV_IstatFormat reader = new DataReaderCSV_IstatFormat();
-            String localpath = "C:\\Users\\UTENTE\\Documents\\NetBeansProjects3\\JD_JSON_processor_Java-main\\JD_JSON_processor_Java-main\\src\\resources";
+            String localpath = "C:\\Users\\UTENTE\\OneDrive - ISTAT\\Documenti\\NetBeansProjects3\\JD_JSON_processor_Java-main\\JD_JSON_processor_Java-main\\src\\resources";
             //String localpath = "C:\\Users\\UTENTE\\Desktop\\resources";
             //Map<String, TsData> tsDataMap = reader.readData(localpath + "\\grezziFAT.csv");
             
