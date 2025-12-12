@@ -116,6 +116,7 @@ public class TSmodelSetup {
     
     
     private void setupTSmodel(String directoryPathExtReg) {
+        setInputSeries();
         setTransform();
         setEstimate();
         setTradingDays(directoryPathExtReg);
@@ -135,7 +136,40 @@ public class TSmodelSetup {
     }
 
    
-   
+    private void setInputSeries(){
+           
+        Day seriesStart = tsData.getStart().firstday();
+        Day seriesEnd   = tsData.getEnd().firstday();
+        
+        if (model.getSeriesStart() != null && !"NA".equals(model.getSeriesStart()))
+        {
+            try {
+                seriesStart  = Day.fromString(model.getSeriesStart());
+            } catch (ParseException ex) {
+                Logger.getLogger(TSmodelSetup.class
+                            .getName()).log(Level.SEVERE, "Problem with series_start", ex);
+            }
+        }
+        
+        if(model.getSeriesEnd()!= null && !"NA".equals(model.getSeriesEnd()))
+        {
+            try {
+                seriesEnd   = Day.fromString(model.getSeriesEnd());
+            } catch (ParseException ex) {
+                Logger.getLogger(TSmodelSetup.class
+                            .getName()).log(Level.SEVERE, "Problem with series_end", ex);            
+            }
+        }    
+
+        TsPeriodSelector periodSelector = new TsPeriodSelector();
+        
+        periodSelector.between(seriesStart, seriesEnd);
+        // periodSelector.from(seriesStart);
+        // periodSelector.to(seriesEnd);
+
+        this.tsData = tsData.select(periodSelector);
+
+    }
     
     
     private void setTransform() {
@@ -1212,5 +1246,7 @@ public class TSmodelSetup {
 
         return result;
     }
+
+
     
 }

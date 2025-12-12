@@ -7,6 +7,7 @@ import ec.satoolkit.tramoseats.TramoSeatsSpecification;
 import ec.tstoolkit.algorithm.CompositeResults;
 import ec.tstoolkit.algorithm.ProcessingContext;
 import ec.tstoolkit.jdr.ws.MultiProcessing;
+import ec.tstoolkit.jdr.ws.SaItem;
 import ec.tstoolkit.jdr.ws.Workspace;
 import ec.tstoolkit.timeseries.simplets.TsData;
 import java.io.IOException;
@@ -36,7 +37,8 @@ public class Main {
             //Map<String, TsData> tsDataMap = reader.readData(localpath + "\\rawdata_db_istat_format.csv");           
             String directoryPathExtReg = localpath + "\\regr\\";
 
-            String filePath = localpath + "\\specifications_new_full_FAT.txt";
+            //String filePath = localpath + "\\specifications_new_full_FAT.txt";
+            String filePath = localpath + "\\specifications_new_full_FAT_series_span.txt";
             //String filePath = localpath + "\\specifications_new_full_TUR_NO_Ramps_and_Iv.txt";
             //String filePath = localpath + "\\specifications_new_full_TUR_Ramps_and_Iv.txt";
             //String filePath = localpath + "\\specifications_db2.txt";
@@ -73,11 +75,17 @@ public class Main {
                 mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
                 //create the object
                 DestSpecificationsModel model = mapper.readValue(mapper.writeValueAsString(data), DestSpecificationsModel.class);
+                
+                // If you want to set the start and end of the Time Series by injecting values directly, you can use this rows:
+                // model.setSeriesStart("2012-09-01"); // dates must be read from an external source, for the series of interest.
+                // model.setSeriesEnd("2022-09-01");
+          
                 // The context is initialized in this function call
                 TSmodelSetup tsModelSetup = new TSmodelSetup(model, context, directoryPathExtReg, tsDataMap.get(seriesName));
                 TramoSeatsSpecification TRAMOSEATSspec = tsModelSetup.getTsSpec();
 
-                CompositeResults rslt = TramoSeatsProcessingFactory.process(tsDataMap.get(seriesName), TRAMOSEATSspec, context);
+                //CompositeResults rslt = TramoSeatsProcessingFactory.process(tsDataMap.get(seriesName), TRAMOSEATSspec, context); //old
+                CompositeResults rslt = TramoSeatsProcessingFactory.process(tsModelSetup.getTsData(), TRAMOSEATSspec, context); // new, qui prendo i dati di input dopo che sono stati filtrati con le date di inizio e fine che ho messo nel modello
                 TsData sa_data  = rslt.getData("sa", TsData.class);
                 TsData cal_data = rslt.getData("ycal", TsData.class);
                 

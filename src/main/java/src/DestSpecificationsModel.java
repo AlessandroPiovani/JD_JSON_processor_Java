@@ -19,6 +19,12 @@ public class DestSpecificationsModel {
     
     @JsonProperty("series_name")
     private String seriesName;
+    
+    @JsonProperty("series_start")
+    private String seriesStart;
+    @JsonProperty("series_end")
+    private String seriesEnd;
+ 
     @JsonProperty("frequency")
     private int frequency;
     @JsonProperty("method")
@@ -258,6 +264,22 @@ public class DestSpecificationsModel {
         this.seriesName = seriesName;
     }
 
+    public String getSeriesStart() {
+        return seriesStart;
+    }
+
+    public void setSeriesStart(String seriesStart) {
+        this.seriesStart = seriesStart;
+    }
+    
+    public String getSeriesEnd() {
+        return seriesEnd;
+    }
+
+    public void setSeriesEnd(String seriesEnd) {
+        this.seriesEnd = seriesEnd;
+    }
+    
     public int getFrequency() {
         return frequency;
     }
