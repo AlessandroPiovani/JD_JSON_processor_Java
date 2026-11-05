@@ -1,11 +1,17 @@
 package src;
 
 import ec.tstoolkit.jdr.ws.MultiProcessing;
-import ec.tstoolkit.jdr.ws.SaItem;
 import ec.tstoolkit.jdr.ws.Workspace;
 import ec.tstoolkit.timeseries.simplets.TsData;
 import ec.tstoolkit.timeseries.simplets.TsPeriod;
-import jd2.algorithm.IProcResults;
+import jd2.datatypes.sa.SaItemType;
+import ec.satoolkit.ISaSpecification;
+import ec.satoolkit.algorithm.implementation.TramoSeatsProcessingFactory;
+import ec.satoolkit.tramoseats.TramoSeatsSpecification;
+import ec.tstoolkit.Parameter;
+import ec.tstoolkit.ParameterType;
+import ec.tstoolkit.algorithm.CompositeResults;
+import ec.tstoolkit.modelling.arima.tramo.ArimaSpec;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -326,26 +332,40 @@ public class SaConsistencyCheck {
     // ---------------------------------------------------------------------
 
     /**
-     * Apre il workspace, ricalcola tutte le stime e restituisce la serie SA
-     * di ogni SaItem (di tutte le multiprocessing).
+     * Apre il workspace e RICALCOLA DA ZERO ogni serie, senza usare i risultati salvati.
+     *
+     * Perche': jdr (SaItem.compute) stima ogni serie partendo dalla specifica Point salvata,
+     * cioe' dal modello di una stima precedente, con i coefficienti gia' stimati come
+     * valori di partenza. Nelle serie con stima "piatta" (es. Pasqua + giorni lavorativi)
+     * questo porta a risultati leggermente diversi da una stima fatta da zero.
+     *
+     * Qui invece ogni serie viene stimata con la stessa regola usata dallo script R per il JSON:
+     *  - si parte dalla specifica Domain;
+     *  - se il modello automatico e' spento e c'e' la Point, l'ARIMA (ordini e coefficienti
+     *    fissati) viene preso dalla Point, perche' nei workspace del plugin TS+ il modello
+     *    vero e' solo li'; i coefficienti "stimati" della Point tornano liberi.
      * Nome serie = nome della serie contenuta nel SaItem.
-     * (stessa API usata da RJDemetra: getSaDefinition().getTs().getName() e getResults())
      */
     public static Map<String, TsData> readWorkspaceSa(String fileName) throws IOException {
         Workspace ws = Workspace.open(fileName);
         if (ws == null) {
             throw new IOException("Impossibile aprire il workspace: " + fileName);
         }
-        ws.computeAll();
 
         Map<String, TsData> out = new LinkedHashMap<>();
         for (int m = 0; m < ws.getMultiProcessingCount(); m++) {
             MultiProcessing mp = ws.getMultiProcessing(m);
             for (int i = 0; i < mp.size(); i++) {
-                SaItem item = mp.get(i);
-                String name = item.getSaDefinition().getTs().getName();
-                IProcResults results = item.getResults();
-                TsData sa = results == null ? null : results.getData("sa", TsData.class);
+                SaItemType def = mp.get(i).getSaDefinition();
+                String name = def.getTs().getName();
+                TsData data = def.getTs().getData();
+                TramoSeatsSpecification spec = specFromScratch(def);
+                if (data == null || spec == null) {
+                    System.err.println("Workspace: serie '" + name + "' senza dati o senza specifica TRAMO-SEATS, ignorata");
+                    continue;
+                }
+                CompositeResults rslt = TramoSeatsProcessingFactory.process(data.cleanExtremities(), spec, ws.getContext());
+                TsData sa = rslt == null ? null : rslt.getData("sa", TsData.class);
                 if (sa == null) {
                     System.err.println("Workspace: nessun risultato 'sa' per " + name);
                     continue;
@@ -356,6 +376,40 @@ public class SaConsistencyCheck {
                 }
                 out.put(name, sa);
             }
+        }
+        return out;
+    }
+
+    /** Specifica da usare per la stima da zero (vedi readWorkspaceSa). */
+    private static TramoSeatsSpecification specFromScratch(SaItemType def) {
+        ISaSpecification domain = def.getDomainSpec();
+        if (!(domain instanceof TramoSeatsSpecification)) {
+            return null;
+        }
+        TramoSeatsSpecification spec = ((TramoSeatsSpecification) domain).clone();
+
+        ISaSpecification point = def.getPointSpec();
+        if (!spec.getTramoSpecification().getAutoModel().isEnabled() && point instanceof TramoSeatsSpecification) {
+            ArimaSpec arima = ((TramoSeatsSpecification) point).getTramoSpecification().getArima().clone();
+            arima.setPhi(freeEstimated(arima.getPhi()));
+            arima.setTheta(freeEstimated(arima.getTheta()));
+            arima.setBPhi(freeEstimated(arima.getBPhi()));
+            arima.setBTheta(freeEstimated(arima.getBTheta()));
+            spec.getTramoSpecification().setArima(arima);
+        }
+        return spec;
+    }
+
+    /** Coefficienti "stimati" (valori di una stima precedente) -> liberi; Fixed e Initial restano. */
+    private static Parameter[] freeEstimated(Parameter[] params) {
+        if (params == null) {
+            return null;
+        }
+        Parameter[] out = new Parameter[params.length];
+        for (int k = 0; k < params.length; k++) {
+            Parameter p = params[k];
+            boolean keep = p != null && (p.getType() == ParameterType.Fixed || p.getType() == ParameterType.Initial);
+            out[k] = keep ? p.clone() : new Parameter();
         }
         return out;
     }

@@ -24,6 +24,18 @@ public class DestSpecificationsModel {
     private String seriesStart;
     @JsonProperty("series_end")
     private String seriesEnd;
+    // Span della serie di tipo First / Last / Excluding (numero di osservazioni).
+    // Alternativi a series_start/series_end, come in JDemetra+ (un solo tipo di span alla volta).
+    @JsonProperty("series_first")
+    @JsonDeserialize(using = StringOrNumberDeserializer.class)
+    private String seriesFirst;
+    @JsonProperty("series_last")
+    @JsonDeserialize(using = StringOrNumberDeserializer.class)
+    private String seriesLast;
+    @JsonProperty("series_exclFirst")
+    private int seriesExclFirst;
+    @JsonProperty("series_exclLast")
+    private int seriesExclLast;
  
     @JsonProperty("frequency")
     private int frequency;
@@ -280,6 +292,38 @@ public class DestSpecificationsModel {
         this.seriesEnd = seriesEnd;
     }
     
+    public String getSeriesFirst() {
+        return seriesFirst;
+    }
+
+    public void setSeriesFirst(String seriesFirst) {
+        this.seriesFirst = seriesFirst;
+    }
+
+    public String getSeriesLast() {
+        return seriesLast;
+    }
+
+    public void setSeriesLast(String seriesLast) {
+        this.seriesLast = seriesLast;
+    }
+
+    public int getSeriesExclFirst() {
+        return seriesExclFirst;
+    }
+
+    public void setSeriesExclFirst(int seriesExclFirst) {
+        this.seriesExclFirst = seriesExclFirst;
+    }
+
+    public int getSeriesExclLast() {
+        return seriesExclLast;
+    }
+
+    public void setSeriesExclLast(int seriesExclLast) {
+        this.seriesExclLast = seriesExclLast;
+    }
+
     public int getFrequency() {
         return frequency;
     }
@@ -974,4 +1018,3 @@ public class DestSpecificationsModel {
     }
     
 }
-

@@ -26,14 +26,19 @@ public class Main_with_checks {
     public static void main(String[] args) {
         try {
             DataReaderCSV_IstatFormat reader = new DataReaderCSV_IstatFormat();
-            String localpath_SITIC = "U:\\Desktop\\SINTESI_FAT_2026\\SITIC-FAT";
-            String localpath       = "U:\\Desktop\\SINTESI_FAT_2026";
 
+//            String localpath_SITIC = "U:\\Desktop\\SINTESI_FAT_2026\\SITIC-FAT";
+//            String localpath       = "U:\\Desktop\\SINTESI_FAT_2026";
+
+            String localpath_SITIC = "C:\\Users\\UTENTE\\OneDrive - ISTAT\\Desktop\\SINTESI_FAT_2026\\SITIC-FAT";
+            String localpath       = "C:\\Users\\UTENTE\\OneDrive - ISTAT\\Desktop\\SINTESI_FAT_2026";
+            
+            
             // --- File per la verifica delle serie destagionalizzate ---
             String siticSaFile = localpath_SITIC + "\\sa_new.csv";                              // SA di TS+ (SITIC)
             
-            String wsLocalFile = localpath + "\\Workspace_container_FAT\\FAT.xml";   // oppure \\output_workspace_container\\workspace.xml
-            //String wsLocalFile = localpath + "\\output_workspace_container\\workspace.xml"; // meglio lui perchè non ha risultati pre-salvati
+            //String wsLocalFile = localpath + "\\Workspace_container_FAT\\FAT.xml";   // oppure \\output_workspace_container\\workspace.xml
+            String wsLocalFile = localpath + "\\output_workspace_container\\workspace.xml"; // meglio lui perchè non ha risultati pre-salvati
 
             
             String reportCsv   = localpath + "\\verifica_sa.csv";                              // report per Excel
@@ -44,8 +49,9 @@ public class Main_with_checks {
             //Map<String, TsData> tsDataMap = reader.readData(localpath + "\\rawdata_db_istat_format.csv");
             String directoryPathExtReg = localpath_SITIC + "\\regr\\";
 
-            String filePath = localpath + "\\specifications_new_full.txt";
-
+//            String filePath = localpath + "\\specifications_new_full.txt";
+            String filePath = localpath + "\\specifications_new.txt";
+            
             List<Map<String, Object>> jsonData = JsonReader.readJsonFile(filePath);
 
             // We will use the library jdr-2.2.5.jar (see in https://github.com/nbbrd/jdemetra-sa-advanced for the last release of the library)
