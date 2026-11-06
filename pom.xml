@@ -6,7 +6,7 @@
     <version>3.2.2-SNAPSHOT</version>
     <packaging>jar</packaging>
     <dependencies>
-        
+
         <dependency>
             <groupId>eu.europa.ec.joinup.sat</groupId>
             <artifactId>demetra-tstoolkit</artifactId>
@@ -19,7 +19,7 @@
             <version>2.2.5</version>
             <type>jar</type>
         </dependency>
-        
+
         <dependency>
             <groupId>be.nbb.demetra</groupId>
             <artifactId>jdr</artifactId>
@@ -48,8 +48,59 @@
     </dependencies>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <exec.mainClass>eu.europa.ec.joinup.sat.jd_json_processor.JD_JSON_processor</exec.mainClass>
+        <!-- release 8: compila per Java 8 e segnala l'uso di API che in Java 8 non esistono
+             (source/target da soli non lo fanno). Richiede di compilare con JDK 9 o successivo. -->
+        <maven.compiler.release>8</maven.compiler.release>
+        <!-- avvio da NetBeans/Maven (Run): l'interfaccia grafica -->
+        <exec.mainClass>src.AppGui</exec.mainClass>
     </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+            </plugin>
+
+            <!-- JAR unico con tutte le dipendenze, avviabile con doppio clic -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>JD_JSON_processor-app</finalName>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <!-- classe avviata dal doppio clic -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>src.AppGui</mainClass>
+                                </transformer>
+                                <!-- unisce i file META-INF/services delle librerie JD+ (altrimenti alcuni
+                                     componenti caricati tramite ServiceLoader non vengono trovati) -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <!-- toglie le firme dei jar originali, che nel jar unico non sarebbero valide -->
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

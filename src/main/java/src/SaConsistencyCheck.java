@@ -71,27 +71,44 @@ public class SaConsistencyCheck {
      * stesse informazioni stampate a console).
      *
      * @param javaSa    serie SA calcolate in Main (nome serie -> TsData)
-     * @param siticCsv  percorso di sa_new.csv
-     * @param wsFile    percorso del file .xml del workspace locale di JDemetra+
-     * @param reportCsv percorso del report CSV (la cartella deve esistere)
-     * @param reportTxt percorso del report TXT (la cartella deve esistere)
+     * @param siticCsv  percorso di sa_new.csv; null = confronto con TS+ non eseguito
+     * @param wsFile    percorso del file .xml del workspace locale di JDemetra+;
+     *                  null = confronto con il workspace non eseguito
+     *                  (almeno uno dei due deve essere indicato)
+     * @param reportCsv percorso del report CSV (la cartella deve esistere); null = non salvato
+     * @param reportTxt percorso del report TXT (la cartella deve esistere); null = non salvato
      * @return true se tutte le serie sono coerenti tra le tre fonti
      */
     public boolean run(Map<String, TsData> javaSa, String siticCsv, String wsFile,
             String reportCsv, String reportTxt) throws IOException {
 
+        if (siticCsv == null && wsFile == null) {
+            throw new IllegalArgumentException("Verifica: indicare almeno uno tra il file di TS+ (sa_new.csv) e il workspace");
+        }
         txt.clear();
         out("=============== VERIFICA SERIE DESTAGIONALIZZATE ===============");
         out("Data esecuzione: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format(new java.util.Date()));
-        out(String.format(Locale.ROOT, "Tolleranze: assoluta = %g, relativa = %g", absTol, relTol));
+        out("Tolleranze: assoluta = " + String.format(Locale.ROOT, "%g", absTol)
+                + ", relativa = " + percent(relTol));
         out("Un periodo e' coerente se la differenza e' entro la soglia assoluta OPPURE entro quella relativa.");
         out("");
 
-        Map<String, Map<String, Double>> sitic = readSiticCsv(siticCsv);
-        out("Serie lette da TS+ (" + siticCsv + "): " + sitic.size());
+        // Fonti attive: null = confronto non richiesto
+        Map<String, Map<String, Double>> sitic = null;
+        if (siticCsv != null) {
+            sitic = readSiticCsv(siticCsv);
+            out("Serie lette da TS+ (" + siticCsv + "): " + sitic.size());
+        } else {
+            out("Confronto con TS+: non richiesto");
+        }
 
-        Map<String, TsData> ws = readWorkspaceSa(wsFile);
-        out("Serie lette dal workspace (" + wsFile + "): " + ws.size());
+        Map<String, TsData> ws = null;
+        if (wsFile != null) {
+            ws = readWorkspaceSa(wsFile);
+            out("Serie lette dal workspace (" + wsFile + "): " + ws.size());
+        } else {
+            out("Confronto con il workspace: non richiesto");
+        }
         out("Serie calcolate in Java: " + javaSa.size());
         out("");
 
@@ -103,14 +120,20 @@ public class SaConsistencyCheck {
         for (Map.Entry<String, TsData> e : javaSa.entrySet()) {
             String name = e.getKey();
             Map<String, Double> j = toMap(e.getValue());
-            Map<String, Double> s = lookup(sitic, name);
-            TsData wsTs = lookup(ws, name);
+            Map<String, Double> s = sitic == null ? null : lookup(sitic, name);
+            TsData wsTs = ws == null ? null : lookup(ws, name);
             Map<String, Double> w = wsTs == null ? null : toMap(wsTs);
 
             List<Diff> seriesDiffs = new ArrayList<>();
-            seriesDiffs.add(compare(name, "JAVA vs SITIC", j, s));
-            seriesDiffs.add(compare(name, "JAVA vs WS", j, w));
-            seriesDiffs.add(compare(name, "WS vs SITIC", w, s));
+            if (sitic != null) {
+                seriesDiffs.add(compare(name, "JAVA vs SITIC", j, s));
+            }
+            if (ws != null) {
+                seriesDiffs.add(compare(name, "JAVA vs WS", j, w));
+            }
+            if (sitic != null && ws != null) {
+                seriesDiffs.add(compare(name, "WS vs SITIC", w, s));
+            }
 
             boolean seriesOk = true;
             for (Diff d : seriesDiffs) {
@@ -133,14 +156,18 @@ public class SaConsistencyCheck {
 
         // Serie presenti in TS+ o nel workspace ma non calcolate in Java
         List<String> extra = new ArrayList<>();
-        for (String name : sitic.keySet()) {
-            if (lookup(javaSa, name) == null) {
-                extra.add(name + " (TS+)");
+        if (sitic != null) {
+            for (String name : sitic.keySet()) {
+                if (lookup(javaSa, name) == null) {
+                    extra.add(name + " (TS+)");
+                }
             }
         }
-        for (String name : ws.keySet()) {
-            if (lookup(javaSa, name) == null) {
-                extra.add(name + " (workspace)");
+        if (ws != null) {
+            for (String name : ws.keySet()) {
+                if (lookup(javaSa, name) == null) {
+                    extra.add(name + " (workspace)");
+                }
             }
         }
         if (!extra.isEmpty()) {
@@ -159,7 +186,17 @@ public class SaConsistencyCheck {
 
         out("");
         out("Serie con differenze per confronto:");
-        for (String what : new String[]{"WS vs JAVA", "WS vs SITIC", "JAVA vs SITIC"}) {
+        List<String> comparisons = new ArrayList<>();
+        if (ws != null) {
+            comparisons.add("WS vs JAVA");
+        }
+        if (ws != null && sitic != null) {
+            comparisons.add("WS vs SITIC");
+        }
+        if (sitic != null) {
+            comparisons.add("JAVA vs SITIC");
+        }
+        for (String what : comparisons) {
             List<String> withDiff = new ArrayList<>();
             List<String> missing = new ArrayList<>();
             for (Diff d : diffs) {
@@ -183,12 +220,20 @@ public class SaConsistencyCheck {
             }
         }
         out("");
-        out("Report CSV: " + reportCsv);
-        out("Report TXT: " + reportTxt);
+        if (reportCsv != null) {
+            out("Report CSV: " + reportCsv);
+        }
+        if (reportTxt != null) {
+            out("Report TXT: " + reportTxt);
+        }
         out("====================================================================");
 
-        writeReport(diffs, reportCsv);
-        Files.write(Paths.get(reportTxt), txt, StandardCharsets.UTF_8);
+        if (reportCsv != null) {
+            writeReport(diffs, reportCsv);
+        }
+        if (reportTxt != null) {
+            Files.write(Paths.get(reportTxt), txt, StandardCharsets.UTF_8);
+        }
         return nKo == 0;
     }
 
@@ -526,8 +571,8 @@ public class SaConsistencyCheck {
                 return what + ": " + note;
             }
             return String.format(Locale.ROOT,
-                    "%s: %d/%d periodi fuori tolleranza, max diff %.6f (rel %.2e) in %s (%.6f vs %.6f)%s",
-                    what, nOut, n, maxAbs, maxRel, worstPeriod.replace("-", "q"), worstA, worstB,
+                    "%s: %d/%d periodi fuori tolleranza, max diff %.6f (rel %s) in %s (%.6f vs %.6f)%s",
+                    what, nOut, n, maxAbs, percent(maxRel), worstPeriod.replace("-", "q"), worstA, worstB,
                     (onlyA + onlyB > 0) ? String.format(" [periodi non comuni: %d / %d]", onlyA, onlyB) : "");
         }
     }
@@ -536,7 +581,7 @@ public class SaConsistencyCheck {
         Path p = Paths.get(reportCsv);
         try (BufferedWriter w = Files.newBufferedWriter(p, StandardCharsets.UTF_8)) {
             w.write("serie;confronto;esito;periodi_comuni;periodi_fuori_tolleranza;solo_prima_fonte;"
-                    + "solo_seconda_fonte;max_diff_assoluta;max_diff_relativa;periodo_max_diff;"
+                    + "solo_seconda_fonte;max_diff_assoluta;max_diff_relativa_perc;periodo_max_diff;"
                     + "valore_prima_fonte;valore_seconda_fonte;note");
             w.newLine();
             for (Diff d : diffs) {
@@ -549,7 +594,7 @@ public class SaConsistencyCheck {
                         String.valueOf(d.onlyA),
                         String.valueOf(d.onlyB),
                         num(d.maxAbs),
-                        num(d.maxRel),
+                        num(d.maxRel * 100),
                         d.worstPeriod.replace("-", "q"),
                         num(d.worstA),
                         num(d.worstB),
@@ -557,6 +602,14 @@ public class SaConsistencyCheck {
                 w.newLine();
             }
         }
+    }
+
+    /** Differenza relativa (frazione) in percentuale, es. 0.00228 -> "0.228%". */
+    static String percent(double fraction) {
+        if (Double.isNaN(fraction) || Double.isInfinite(fraction)) {
+            return String.valueOf(fraction);
+        }
+        return String.format(Locale.ROOT, "%.3g%%", fraction * 100);
     }
 
     /** Numero con virgola decimale, per aprire il report direttamente in Excel italiano. */
