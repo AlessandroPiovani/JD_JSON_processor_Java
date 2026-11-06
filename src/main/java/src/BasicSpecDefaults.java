@@ -13,8 +13,10 @@ import java.util.Map;
  * ricostruendo il JSON completo (come from_reduced_to_full_JD_JSON_file in R).
  * Un JSON gia' completo non viene modificato.
  *
- * NOTA: devono restare allineati a basic_spec.R. Unica differenza voluta: in RSA1
- * easter.type e' "Unused" (in basic_spec.R c'e' il refuso "Unised").
+ * NOTA: devono restare allineati a basic_spec.R (che a sua volta deve coincidere con le
+ * specifiche di JDemetra+). Versione allineata a basic_spec.R corretto il 04/11/2026:
+ * RSA1 easter.type "Unused" (era il refuso "Unised"), RSA2 con anno bisestile e senza
+ * modello automatico (airline), come in JDemetra+.
  *
  * @author alessandro.piovani@istat.it
  */
@@ -82,6 +84,7 @@ public final class BasicSpecDefaults {
         rsa0.put("automdl.ljungboxlimit", Double.valueOf(0.95));
         rsa0.put("automdl.compare", false);
         rsa0.put("arima.mu", true);
+        rsa0.put("arima.muFixedValue", "NA");   // media fissata: NA = stimata
         rsa0.put("arima.p", Integer.valueOf(0));
         rsa0.put("arima.d", Integer.valueOf(1));
         rsa0.put("arima.q", Integer.valueOf(1));
@@ -122,6 +125,7 @@ public final class BasicSpecDefaults {
         Map<String, Object> rsa2 = new LinkedHashMap<>(rsa0);
         rsa2.put("transform.function", "Auto");
         rsa2.put("tradingdays.option", "WorkingDays");
+        rsa2.put("tradingdays.leapyear", true);      // come JDemetra+ (basic_spec.R corretto)
         rsa2.put("tradingdays.test", "Separate_T");
         rsa2.put("easter.type", "Standard");
         rsa2.put("easter.test", true);
@@ -129,7 +133,6 @@ public final class BasicSpecDefaults {
         rsa2.put("outlier.ao", true);
         rsa2.put("outlier.tc", true);
         rsa2.put("outlier.ls", true);
-        rsa2.put("automdl.enabled", true);
         DEFAULTS.put("RSA2", rsa2);
 
         Map<String, Object> rsa3 = new LinkedHashMap<>(rsa0);

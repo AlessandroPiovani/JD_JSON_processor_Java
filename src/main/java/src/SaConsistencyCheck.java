@@ -395,6 +395,10 @@ public class SaConsistencyCheck {
             arima.setTheta(freeEstimated(arima.getTheta()));
             arima.setBPhi(freeEstimated(arima.getBPhi()));
             arima.setBTheta(freeEstimated(arima.getBTheta()));
+            // media: se presente e non fissata, torna stimata (niente valore di una stima precedente)
+            if (arima.getMu() != null && arima.getMu().getType() != ParameterType.Fixed) {
+                arima.setMu(new Parameter());
+            }
             spec.getTramoSpecification().setArima(arima);
         }
         return spec;

@@ -698,6 +698,14 @@ public class TSmodelSetup {
         int bq = model.getArimaBQ();
 
         aspec.setMean(model.isArimaMu());
+        // Media fissata (estensione ISTAT, non disponibile nella GUI di JD+): solo se la media e' nel modello
+        if (model.isArimaMu() && isPresent(model.getArimaMuFixedValue())) {
+            try {
+                aspec.setMu(new Parameter(Double.parseDouble(model.getArimaMuFixedValue().trim()), ParameterType.Fixed));
+            } catch (NumberFormatException ex) {
+                throw new IllegalArgumentException("arima.muFixedValue non numerico: " + model.getArimaMuFixedValue(), ex);
+            }
+        }
         aspec.setP(p);
         aspec.setD(d);
         aspec.setQ(q);

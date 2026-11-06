@@ -162,6 +162,10 @@ public class DestSpecificationsModel {
     private boolean automdlCompare;
     @JsonProperty("arima.mu")
     private boolean arimaMu;
+    // Media fissata (estensione ISTAT): considerata solo se arima.mu = true.
+    // "NA" o assente = media stimata; un numero = media fissata a quel valore.
+    @JsonProperty("arima.muFixedValue")
+    private String arimaMuFixedValue;
     @JsonProperty("arima.p")
     private int arimaP;
     @JsonProperty("arima.d")
@@ -807,6 +811,14 @@ public class DestSpecificationsModel {
 
     public void setArimaMu(boolean arimaMu) {
         this.arimaMu = arimaMu;
+    }
+
+    public String getArimaMuFixedValue() {
+        return arimaMuFixedValue;
+    }
+
+    public void setArimaMuFixedValue(String arimaMuFixedValue) {
+        this.arimaMuFixedValue = arimaMuFixedValue;
     }
 
     public int getArimaP() {
