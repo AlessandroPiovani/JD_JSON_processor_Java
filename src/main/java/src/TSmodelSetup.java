@@ -140,7 +140,19 @@ public class TSmodelSetup {
         // numero di osservazioni (series_first / series_last / series_exclFirst / series_exclLast)
         TsPeriodSelector periodSelector = buildSpan("series", model.getSeriesStart(), model.getSeriesEnd(),
                 model.getSeriesFirst(), model.getSeriesLast(), model.getSeriesExclFirst(), model.getSeriesExclLast());
-        this.tsData = tsData.select(periodSelector);
+        // Come nella GUI di JDemetra+ (Basic > Series span): la serie resta intera e lo span va
+        // nella specifica; e' JD+ a tagliare la serie all'inizio dell'elaborazione. Risultati
+        // identici al taglio esplicito, ma il workspace salvato contiene la serie intera + lo span.
+        // Deve restare la prima chiamata di setupTSmodel(): setTransform() modifica lo stesso
+        // TransformSpec senza toccarne lo span.
+        TransformSpec tf = tsSpec.getTramoSpecification().getTransform();
+        if (tf == null) {
+            tf = new TransformSpec();
+            tsSpec.getTramoSpecification().setTransform(tf);
+        }
+        tf.setSpan(periodSelector);
+        // versione precedente (taglio esplicito della serie in input):
+        // this.tsData = tsData.select(periodSelector);
     }
 
     /**

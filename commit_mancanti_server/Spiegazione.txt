@@ -1,0 +1,5 @@
+Da sostituire al Server che legge da DB. Setta lo span della serie bene invece che "tagliare" i dati in input: ora si setta lo span nel workspace in modo da consentire a JD+ di lavorare con meno dati, pur mantenendo in memoria la serie intera, a cui si può tornare selezionando Span="All".
+
+Il sistema funziona comunque, tant'è che la modifica verrebbe presa solo dal WS in output a Java, che, ad oggi, non è usato.
+
+NOTA: nelle mie versioni locali questa modifica è già stata implementata (con lettura da file invece che in locale), su KOALA non ancora. Per farlo basta caricare il file TSmodelSetup.java di questa cartella, che legge già da DB.
