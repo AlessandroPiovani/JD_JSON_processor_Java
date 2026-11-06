@@ -291,7 +291,11 @@ public class TSmodelSetup {
                                     System.out.print("External regressors loaded for Trading Days: ");
                                     System.out.println(varNameForDescriptor);
                                 } catch (IOException ex) {
-                                    Logger.getLogger(TSmodelSetup.class.getName()).log(Level.SEVERE, null, ex);
+                                    // Regressore di calendario mancante o illeggibile: il programma si ferma
+                                    // (prima l'errore veniva solo registrato e la serie era stimata senza regressore)
+                                    throw new IllegalStateException("Serie " + model.getSeriesName()
+                                            + ": lettura non riuscita del regressore di calendario "
+                                            + usrDefVar.getContainer() + " - " + ex.getMessage(), ex);
                                 }
                             } else if (usrDefVar.getNumVar() == 1) {
                                 varNames.add(varNameForDescriptor);
@@ -384,13 +388,16 @@ public class TSmodelSetup {
                     usrDefVariables = ExtRegDataReaderTSplus.readTsFile(directoryPathExtReg, usrDefVar.getContainer(), freq, startYear, startMonth - 1);
 
                 } catch (IOException ex) {
-                    Logger.getLogger(TSmodelSetup.class
-                            .getName()).log(Level.SEVERE, null, ex);
+                    // Regressore mancante o illeggibile: il programma si ferma
+                    throw new IllegalStateException("Serie " + model.getSeriesName()
+                            + ": lettura non riuscita del regressore " + usrDefVar.getContainer()
+                            + " - " + ex.getMessage(), ex);
                 }
 
-                if (usrDefVariables == null)
+                if (usrDefVariables == null || usrDefVariables.isEmpty())
                 {
-                    throw new IllegalStateException("Lettura non riuscita del file di regressori: " + usrDefVar.getContainer());
+                    throw new IllegalStateException("Serie " + model.getSeriesName()
+                            + ": nessuna variabile letta dal file di regressori " + usrDefVar.getContainer());
                 }
                 if (usrDefVariables.size() != numVarOf(usrDefVar))
                 {

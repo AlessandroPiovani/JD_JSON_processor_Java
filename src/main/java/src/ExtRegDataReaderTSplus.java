@@ -44,10 +44,17 @@ public class ExtRegDataReaderTSplus {
         try (BufferedReader br = new BufferedReader(new FileReader(file))) {
             String line;
             List<List<Double>> columns = new ArrayList<>();
+            int lineNumber = 0;
 
             // Leggi ogni riga e processa i valori
             while ((line = br.readLine()) != null) {
-                String[] values = line.split("\t");
+                lineNumber++;
+                // Salta le righe vuote o di soli spazi/tabulazioni (es. "a capo" finale)
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+                // trim(): ignora tabulazioni e spazi a inizio/fine riga
+                String[] values = line.trim().split("\\s*\t\\s*");
 
                 // Inizializza le colonne al primo passaggio
                 if (columns.isEmpty()) {
@@ -55,11 +62,23 @@ public class ExtRegDataReaderTSplus {
                         columns.add(new ArrayList<>());
                     }
                 }
+                if (values.length != columns.size()) {
+                    throw new IOException(file + ", riga " + lineNumber + ": trovate " + values.length
+                            + " colonne invece di " + columns.size());
+                }
 
                 // Aggiungi i valori alle rispettive colonne
                 for (int i = 0; i < values.length; i++) {
-                    columns.get(i).add(Double.valueOf(values[i]));
+                    try {
+                        columns.get(i).add(Double.valueOf(values[i]));
+                    } catch (NumberFormatException ex) {
+                        throw new IOException(file + ", riga " + lineNumber + ", colonna " + (i + 1)
+                                + ": valore non numerico '" + values[i] + "'", ex);
+                    }
                 }
+            }
+            if (columns.isEmpty()) {
+                throw new IOException(file + ": file vuoto");
             }
 
             // Crea un oggetto TsData per ogni colonna e aggiungilo alla mappa            
