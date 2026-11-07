@@ -60,6 +60,12 @@ public class Main {
             
             // Create the multiplrocessing (with any name)
             MultiProcessing mp = ws.newMultiProcessing("All");
+
+            // Report diagnostici (come create_diagnostic_report1/2 in R): DiagnosticReports(outputOnFile, outputOnStrings).
+            // Disabilitati: per salvarli su file in localpath (processing_problems.out e
+            // processing_model_details.out) mettere il primo argomento a true.
+            DiagnosticReports reports = new DiagnosticReports(false, false);
+            reports.setOutputDir(localpath);
             
             String seriesName=null;
             for (Map<String, Object> data : jsonData) {
@@ -88,6 +94,7 @@ public class Main {
                 CompositeResults rslt = TramoSeatsProcessingFactory.process(tsModelSetup.getTsData(), TRAMOSEATSspec, context); // new, qui prendo i dati di input dopo che sono stati filtrati con le date di inizio e fine che ho messo nel modello
                 TsData sa_data  = rslt.getData("sa", TsData.class);
                 TsData cal_data = rslt.getData("ycal", TsData.class);
+                reports.add(seriesName, rslt);   // indicatori per i report diagnostici (nessun effetto se disabilitati)
                 
                 System.out.println("SA series:");
                 System.out.println(sa_data);
@@ -117,6 +124,9 @@ public class Main {
             {System.out.println("WS SAVED");}
             else
             {System.out.println("ERROR IN SAVING WS");}    
+
+            // Report diagnostici (solo se abilitati sopra)
+            reports.produce();
             
         } catch (IOException e) {
             e.printStackTrace();

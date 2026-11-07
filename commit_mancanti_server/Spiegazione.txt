@@ -1,5 +1,192 @@
+MODIFICHE DA PORTARE IN PRODUZIONE (KOALA)
+==========================================
+
+File da caricare (sei):
+
+  it.istat.koala.utility
+    TSmodelSetup.java                       span della serie come nella GUI di JD+
+    ExtRegDataReaderTSplus.java             lettura dei regressori dal DB: errori espliciti
+    DiagnosticReports.java                  NUOVO - report diagnostici (come in R)
+    SeasonalData.java                       supporto ai report diagnostici
+
+  it.istat.koala.service.impl
+    JDemetraServiceImpl.java                supporto ai report diagnostici
+    SeasonalDataProcessingServiceImpl.java  valori mancanti + report diagnostici
+
+Da aggiornare anche:
+  - pom.xml (vedi la sezione dedicata in fondo): una sola configurazione aggiunta al plugin di
+    Spring Boot, per includere jdr-2.2.5.jar nel war.
+
+Nessuna modifica al DB e nessuna nuova tabella.
+
+
+I file vanno caricati tutti insieme, insieme al pom.xml: SeasonalDataProcessingServiceImpl usa
+DiagnosticReports e i nuovi metodi di SeasonalData, JDemetraServiceImpl usa i nuovi metodi di
+SeasonalData, DiagnosticReports usa la libreria jdr.
+
+
+
+TSmodelSetup.java
+-----------------
+
 Da sostituire al Server che legge da DB. Setta lo span della serie bene invece che "tagliare" i dati in input: ora si setta lo span nel workspace in modo da consentire a JD+ di lavorare con meno dati, pur mantenendo in memoria la serie intera, a cui si può tornare selezionando Span="All".
 
-Il sistema funziona comunque, tant'è che la modifica verrebbe presa solo dal WS in output a Java, che, ad oggi, non è usato.
+Il sistema funziona comunque bene, tant'è che la modifica verrebbe presa solo dal WS in output a Java, che, ad oggi, non è usato. Però a scopi di debugging potrebbe essere utile.
 
 NOTA: nelle mie versioni locali questa modifica è già stata implementata (con lettura da file invece che in locale), su KOALA non ancora. Per farlo basta caricare il file TSmodelSetup.java di questa cartella, che legge già da DB.
+
+Effetto su JDemetraServiceImpl: getTsData() ora restituisce la serie intera e JD+ applica lo span
+indicato nella specifica. Nessuna modifica necessaria in quel punto.
+
+
+
+ExtRegDataReaderTSplus.java
+---------------------------
+
+Il caso grave sono le prime due righe della tabella. Il lettore attuale, dopo un errore SQL o davanti a un regressore vuoto, restituisce una lista di variabili vuota. Nel ramo dei regressori di calendario TSmodelSetup non controlla questo caso, quindi la serie viene stimata senza il regressore di calendario e nessuno se ne accorge. Con la correzione ogni problema diventa un errore che ferma quella serie, con il nome della serie, del regressore e il motivo. L’errore finisce poi in JOB_ERRORI come gli altri.
+
+La tabella dei casi provati (lettore precedente -> lettore corretto):
+  - errore SQL in lettura:              regressore vuoto, nessun errore  -> errore con il motivo
+  - regressore vuoto nel DB:            regressore vuoto, nessun errore  -> errore "contenuto vuoto nel DB"
+  - righe con numero di colonne diverso: colonne di lunghezza diversa     -> errore con il numero di riga
+  - riga vuota (anche l'a capo finale): NumberFormatException: empty String -> riga ignorata
+  - valore non numerico:                NumberFormatException generica   -> errore con riga, colonna e valore
+  - regressore assente:                 errore senza nome della serie    -> errore con il nome della serie
+  - fine riga Windows/Unix, spazi:      ok                               -> ok
+
+Una differenza con il locale, solo nei nomi. Per un regressore con una sola colonna, il DB chiamava la variabile lym_00_1 mentre il locale la chiama lym_00. I risultati non cambiano, ma adesso i nomi sono uguali nelle due versioni.
+
+Il tuo collaudo di produzione è passato perché i dati nel DB oggi sono puliti. Queste correzioni servono per i regressori che caricherete in futuro.
+
+Un’ultima cosa: i nomi dei file nel DB devono essere scritti in minuscolo. R scrive il nome del file in minuscolo (ad esempio lym_00.txt) e la ricerca nel DB distingue maiuscole e minuscole. Su Windows non te ne accorgi, perché i file si aprono comunque. Nel DB invece un regressore caricato come LYM_00.txt non viene trovato, e con la correzione la serie si ferma con il messaggio “non trovato nel DB”. Oggi i nomi coincidono, visto che la produzione gira, ma quando caricate un regressore nuovo usate il nome in minuscolo.
+
+DestRegressoreRepository.java resta invariato.
+
+
+
+SeasonalDataProcessingServiceImpl.java
+--------------------------------------
+
+Errore esplicito quando ci sono missing nei dati input: la modifica si trova in elaboraDettaglio, subito dopo il controllo di continuità. Prima di copiare i valori, il codice cerca i periodi con valore nullo. Se ne trova, la serie non viene elaborata e l’errore lo dice:
+
+Es. "La serie ha 2 valori mancanti nei periodi 201503, 201811"
+
+Ho usato lo stesso meccanismo degli altri controlli della serie: la serie troppo corta, quella discontinua. Quindi il messaggio arriva in JOB_ERRORI con la chiave della serie, e il job prosegue con le altre serie, come succede già oggi per le serie discontinue. Prima si aveva invece un NullPointerException senza nessuna indicazione del periodo.
+
+Report diagnostici (nuovo): durante la destagionalizzazione diretta ogni serie elaborata viene
+aggiunta ai report; alla fine della fase diretta i report vengono prodotti (vedi
+DiagnosticReports.java). Punti toccati, tutti commentati nel codice:
+  - campi di configurazione @Value (vedi sotto);
+  - creazione dei report all'inizio della fase "2. DESTAGIONALIZZAZIONE DIRETTA";
+  - aggiunta della serie ai report quando l'esito e' "ok", e rilascio immediato dei
+    risultati completi di JD+ per non occupare memoria;
+  - produzione dei report dopo la fase diretta, prima del salvataggio di DEST_DIRETTA;
+  - metodo getReportDiagnostici(): report dell'ultimo job come mappa nome file -> testo.
+Un problema nei report non blocca mai i dati: viene scritto nel log e, se riguarda la
+produzione dei file, anche in JOB_ERRORI con la chiave "Report diagnostici".
+
+Configurazione (application.properties; tutte facoltative, a destra il default):
+  dest.report.outputOnFile=false          scrive i report su file in dest.report.outputDir
+  dest.report.outputOnStrings=false       rende i report disponibili in getReportDiagnostici()
+  dest.report.outputDir=${java.io.tmpdir} cartella dei file
+  dest.report.problemsFile=processing_problems.out
+  dest.report.detailsFile=processing_model_details.out
+  dest.report.excludeNonSeas=true         esclude dalle diagnostiche le serie senza parte stagionale
+Con outputOnFile e outputOnStrings entrambi a false (default) i report non vengono prodotti,
+non si scrive nulla su file system e non si occupa memoria: il comportamento del servizio resta
+quello di prima.
+
+Contiene inoltre la modifica gia' in produzione del 06/11 (completamento del JSON ridotto con
+BasicSpecDefaults in setSeasonalModel).
+
+
+
+DiagnosticReports.java (NUOVO)
+------------------------------
+
+Produce in Java i due report che in R facevano create_diagnostic_report1 e
+create_diagnostic_report2 (pacchetto RJDProcessor):
+  - processing_problems.out:       elenco delle serie con BIC, Ljung-Box, Ljung-Box sui quadrati
+    e normalita' dei residui, sezioni dei problemi, riepilogo delle serie problematiche con i
+    coefficienti non significativi, serie senza stagionalita';
+  - processing_model_details.out:  per ogni serie, trasformazione log, test sui residui e tutti
+    i coefficienti (regressori e ARIMA) con t-stat; i coefficienti fissati sono indicati "fixed".
+
+Gli indicatori sono letti con lo stesso dizionario usato da RJDemetra (TramoSeatsResults di jdr),
+quindi i valori coincidono con quelli dei report R. Verifica: sui workspace TUR (TS+ e creato
+da R) i file Java sono identici byte per byte a quelli prodotti da R.
+
+Differenze volute rispetto al codice R, dove c'erano due errori:
+  - colonna Freq: in R valeva sempre 12 anche per le serie trimestrali (frequency() applicata
+    alla lista restituita da get_indicators). In Java c'e' la frequenza vera (12 o 4).
+    Corretto anche in report.R.
+  - nomi dei coefficienti ARIMA: JD+ restituisce i parametri nell'ordine phi, Bphi, theta,
+    Btheta; R li etichettava phi, theta, Bphi, Btheta, scambiando Bphi e theta nei modelli con
+    AR stagionale e MA regolare insieme. Java usa l'ordine corretto.
+
+La stessa classe e' usata in locale (Main, Main_with_checks, AppGui) e in produzione, cosi' i
+report sono identici nei due ambienti.
+
+
+
+SeasonalData.java
+-----------------
+
+Aggiunto il campo jdResults (risultati completi di JD+ della serie) con getter e setter, usato
+solo per passare i risultati da JDemetraServiceImpl ai report diagnostici. Il campo e' transient
+e i metodi sono annotati @JsonIgnore: NON viene serializzato nel JSON di DEST_DIRETTA, che resta
+identico. Viene azzerato subito dopo l'uso. Nessun'altra modifica.
+
+
+
+JDemetraServiceImpl.java
+------------------------
+
+In processTSspec, subito dopo TramoSeatsProcessingFactory.process(...), i risultati vengono
+salvati nella serie (datiSerie.setJdResults(...)) per i report diagnostici. Nessuna modifica al
+calcolo, agli output o alle soglie.
+
+
+
+pom.xml
+-------
+
+Perche': DiagnosticReports usa la libreria jdr (be.nbb.demetra:jdr:2.2.5), la stessa con cui
+RJDemetra legge gli indicatori in R. Finora nessuna classe di produzione la usava.
+La dipendenza e' gia' nel pom (righe 159-165), ma con scope "system": jdr-2.2.5 non e' su
+Maven Central (e' la versione 2.2.5 modificata) e viene presa dal file SOFTWARE/lib/jdr-2.2.5.jar
+del repository. Con scope "system" il jar serve alla compilazione, ma Spring Boot di default NON
+lo mette nel war: a runtime la classe mancherebbe (NoClassDefFoundError) appena i report
+vengono attivati.
+Le altre librerie JD+ (demetra-tstoolkit e demetra-tss 2.2.4) sono dipendenze normali, scaricate
+dal repository Maven, e finiscono nel war senza bisogno di nulla.
+
+Modifica: nel plugin spring-boot-maven-plugin (sezione <build><plugins>) aggiunta la configurazione
+
+    <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+            <includeSystemScope>true</includeSystemScope>
+        </configuration>
+    </plugin>
+
+Nient'altro cambia: dipendenze, versioni e profili restano uguali, jdr-2.2.5.jar resta in
+SOFTWARE/lib.
+
+Controllo (una volta): build con il profilo "produzione", aprire come zip il war in
+SOFTWARE/target e verificare che in WEB-INF/lib ci siano jdr-2.2.5.jar,
+demetra-tstoolkit-2.2.4.jar e demetra-tss-2.2.4.jar.
+
+Alternativa piu' pulita, se disponibile: caricare jdr-2.2.5.jar nel repository Maven interno e
+dichiararlo come le altre due librerie JD+ (senza scope e systemPath). In quel caso
+includeSystemScope non serve.
+
+Nota sulle versioni: in produzione la libreria di stima e' la 2.2.4 (in locale la 2.2.5). Il
+collaudo produzione contro workspace ha dato zero differenze. DiagnosticReports e' stata
+verificata con la libreria 2.2.5: alla prima attivazione in collaudo
+(dest.report.outputOnFile=true) confrontare i due report con quelli di R sulle stesse serie.
+
+@Alessandro: la versione 2.2.5 rispetto alla 2.2.4 ha solo modifiche in jdr, per cui non cambia 
+fra usare demetra-tstoolkit-2.2.4.jar e demetra-tss-2.2.4.jar e 2.2.5. Cambia solo jdr.
+

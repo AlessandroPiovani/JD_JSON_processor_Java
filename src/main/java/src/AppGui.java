@@ -1,8 +1,18 @@
 package src;
 
-
-
-import src.ProcessingRunner;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import ec.satoolkit.algorithm.implementation.TramoSeatsProcessingFactory;
+import ec.satoolkit.tramoseats.TramoSeatsSpecification;
+import ec.tstoolkit.algorithm.CompositeResults;
+import ec.tstoolkit.algorithm.ProcessingContext;
+import ec.tstoolkit.jdr.ws.MultiProcessing;
+import ec.tstoolkit.jdr.ws.Workspace;
+import ec.tstoolkit.timeseries.simplets.TsData;
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Desktop;
@@ -63,17 +73,21 @@ public class AppGui extends JFrame {
     private final JRadioButton onlySitic = new JRadioButton("Solo TS+");
     private final JRadioButton onlyWs    = new JRadioButton("Solo workspace");
     private final JRadioButton both      = new JRadioButton("Entrambe", true);
-    private final JCheckBox saveBox      = new JCheckBox("Salva workspace e report", true);
+    private final JRadioButton noCheck   = new JRadioButton("Nessuna (solo elaborazione Java)");
+    private final JCheckBox saveBox      = new JCheckBox("Salva workspace e verifica", true);
+    private final JCheckBox diagBox      = new JCheckBox("Report diagnostici (come in R)", true);
 
     private final JButton siticBrowse = new JButton("Sfoglia...");
     private final JButton wsBrowse    = new JButton("Sfoglia...");
     private final JButton outBrowse   = new JButton("Sfoglia...");
     private final JButton runButton   = new JButton("Esegui");
-    private final JButton openReport  = new JButton("Apri report");
+    private final JButton openReport  = new JButton("Apri verifica");
+    private final JButton openDiag    = new JButton("Apri report diagnostici");
     private final JLabel  status      = new JLabel(" ");
     private final JTextArea console   = new JTextArea(22, 100);
 
     private String lastReport;
+    private String lastDiag;
 
     public AppGui() {
         super("Destagionalizzazione JD+ - elaborazione e verifica");
@@ -89,7 +103,7 @@ public class AppGui extends JFrame {
         // Scelta dei confronti
         JPanel radios = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         ButtonGroup group = new ButtonGroup();
-        for (JRadioButton r : new JRadioButton[]{onlySitic, onlyWs, both}) {
+        for (JRadioButton r : new JRadioButton[]{onlySitic, onlyWs, both, noCheck}) {
             group.add(r);
             radios.add(r);
             r.addActionListener(e -> updateEnabled());
@@ -115,18 +129,27 @@ public class AppGui extends JFrame {
         // Salvataggio
         saveBox.addActionListener(e -> updateEnabled());
         addRow(form, row++, new JLabel(""), saveBox, null, null);
+        JPanel diagRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JLabel diagHint = new JLabel("   (processing_problems.out, processing_model_details.out)");
+        diagHint.setForeground(HINT);
+        diagRow.add(diagBox);
+        diagRow.add(diagHint);
+        addRow(form, row++, new JLabel(""), diagRow, null, null);
         outBrowse.addActionListener(e -> choose(outField, true, null));
-        row = addFileRow(form, row, "Cartella di output:", outField, "(workspace e report)", outBrowse);
+        row = addFileRow(form, row, "Cartella di output:", outField, "(workspace, verifica e report)", outBrowse);
 
         // Pulsanti
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT));
         runButton.addActionListener(e -> runProcessing());
         openReport.setEnabled(false);
         openReport.addActionListener(e -> openFile(lastReport));
+        openDiag.setEnabled(false);
+        openDiag.addActionListener(e -> openFile(lastDiag));
         JButton clear = new JButton("Pulisci console");
         clear.addActionListener(e -> console.setText(""));
         buttons.add(runButton);
         buttons.add(openReport);
+        buttons.add(openDiag);
         buttons.add(clear);
         status.setFont(status.getFont().deriveFont(Font.BOLD));
         buttons.add(status);
@@ -211,14 +234,17 @@ public class AppGui extends JFrame {
         siticBrowse.setEnabled(sitic);
         wsField.setEnabled(ws);
         wsBrowse.setEnabled(ws);
+        absTolField.setEnabled(sitic || ws);   // tolleranze: servono solo alla verifica
+        relTolField.setEnabled(sitic || ws);
         outField.setEnabled(saveBox.isSelected());
         outBrowse.setEnabled(saveBox.isSelected());
+        diagBox.setEnabled(saveBox.isSelected());   // i report vanno nella cartella di output
     }
 
     // ------------------------------------------------------------------ esecuzione
 
     private void runProcessing() {
-        final ProcessingRunner.Config c;
+        final Config c;
         try {
             c = readConfig();
         } catch (IllegalArgumentException ex) {
@@ -228,24 +254,31 @@ public class AppGui extends JFrame {
         savePrefs();
         runButton.setEnabled(false);
         openReport.setEnabled(false);
+        openDiag.setEnabled(false);
         status.setForeground(Color.DARK_GRAY);
         status.setText("Elaborazione in corso...");
 
-        new SwingWorker<ProcessingRunner.Result, Void>() {
+        new SwingWorker<Result, Void>() {
             @Override
-            protected ProcessingRunner.Result doInBackground() throws Exception {
-                return ProcessingRunner.run(c);
+            protected Result doInBackground() throws Exception {
+                return elabora(c);
             }
 
             @Override
             protected void done() {
                 runButton.setEnabled(true);
                 try {
-                    ProcessingRunner.Result r = get();
+                    Result r = get();
                     status.setForeground(r.allOk ? new Color(0, 128, 0) : new Color(200, 100, 0));
-                    status.setText(r.allOk ? "VERIFICA SUPERATA" : "VERIFICA CON DIFFERENZE (vedi console/report)");
+                    if (!r.verified) {
+                        status.setText("ELABORAZIONE COMPLETATA (nessuna verifica)");
+                    } else {
+                        status.setText(r.allOk ? "VERIFICA SUPERATA" : "VERIFICA CON DIFFERENZE (vedi console/report)");
+                    }
                     lastReport = r.reportTxt;
                     openReport.setEnabled(lastReport != null);
+                    lastDiag = r.diagnosticReport;
+                    openDiag.setEnabled(lastDiag != null);
                 } catch (InterruptedException | ExecutionException ex) {
                     Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
                     StringWriter sw = new StringWriter();
@@ -260,8 +293,8 @@ public class AppGui extends JFrame {
         }.execute();
     }
 
-    private ProcessingRunner.Config readConfig() {
-        ProcessingRunner.Config c = new ProcessingRunner.Config();
+    private Config readConfig() {
+        Config c = new Config();
         c.rawDataFile   = requireFile(rawField, "Dati grezzi", false);
         c.regressorsDir = requireFile(regrField, "Cartella regressori", true);
         c.specFile      = requireFile(specField, "Specifiche JSON", false);
@@ -271,8 +304,11 @@ public class AppGui extends JFrame {
         c.compareWsFile = ws ? requireFile(wsField, "Workspace di confronto", false) : null;
         c.saveOutputs   = saveBox.isSelected();
         c.outputDir     = c.saveOutputs ? requireFile(outField, "Cartella di output", true) : null;
-        c.absTol        = parseNumber(absTolField, "Tolleranza assoluta");
-        c.relTolPercent = parseNumber(relTolField, "Tolleranza relativa (%)");
+        c.diagnosticReports = c.saveOutputs && diagBox.isSelected();
+        if (sitic || ws) {   // le tolleranze servono solo alla verifica
+            c.absTol        = parseNumber(absTolField, "Tolleranza assoluta");
+            c.relTolPercent = parseNumber(relTolField, "Tolleranza relativa (%)");
+        }
         return c;
     }
 
@@ -357,7 +393,9 @@ public class AppGui extends JFrame {
         onlySitic.setSelected("sitic".equals(mode));
         onlyWs.setSelected("ws".equals(mode));
         both.setSelected("both".equals(mode));
+        noCheck.setSelected("none".equals(mode));
         saveBox.setSelected(prefs.getBoolean("save", true));
+        diagBox.setSelected(prefs.getBoolean("diag", true));
     }
 
     private void savePrefs() {
@@ -369,8 +407,10 @@ public class AppGui extends JFrame {
         prefs.put("out", outField.getText().trim());
         prefs.put("absTol", absTolField.getText().trim());
         prefs.put("relTol", relTolField.getText().trim());
-        prefs.put("mode", onlySitic.isSelected() ? "sitic" : onlyWs.isSelected() ? "ws" : "both");
+        prefs.put("mode", onlySitic.isSelected() ? "sitic" : onlyWs.isSelected() ? "ws"
+                : noCheck.isSelected() ? "none" : "both");
         prefs.putBoolean("save", saveBox.isSelected());
+        prefs.putBoolean("diag", diagBox.isSelected());
     }
 
     /** Cartella in cui si trova il JAR (default per l'output); se non disponibile, la cartella corrente. */
@@ -381,6 +421,133 @@ public class AppGui extends JFrame {
         } catch (Exception ex) {
             return System.getProperty("user.dir");
         }
+    }
+
+    // ------------------------------------------------------------------ elaborazione
+
+
+    /** Parametri dell'elaborazione. */
+    static class Config {
+        public String rawDataFile;      // dati grezzi (CSV formato ISTAT, es. grezzi.csv)
+        public String regressorsDir;    // cartella dei regressori esterni (es. regr)
+        public String specFile;         // specifiche JSON (completo o ridotto)
+        public String siticSaFile;      // SA di TS+ (es. sa_new.csv); null = confronto non eseguito
+        public String compareWsFile;    // workspace di confronto (.xml); null = confronto non eseguito
+        public boolean saveOutputs;     // salva workspace e verifica
+        public String outputDir;        // cartella di output (se saveOutputs)
+        public boolean diagnosticReports; // report diagnostici come in R (nella cartella di output)
+        public double absTol = 0.01;    // tolleranza assoluta
+        public double relTolPercent = 0.001;  // tolleranza relativa, in percentuale
+    }
+
+    /** Esito dell'elaborazione. */
+    static class Result {
+        public boolean allOk;
+        public boolean verified;        // false se non e' stato chiesto nessun confronto
+        public String reportTxt;        // null se i report non sono salvati
+        public String diagnosticReport; // processing_problems.out; null se i report diagnostici non sono prodotti
+        public String workspaceFile;    // null se il workspace non e' salvato
+    }
+
+    /**
+     * Destagionalizzazione delle serie del JSON e verifica di coerenza: stessa elaborazione di
+     * Main_with_checks, con i percorsi scelti nella finestra.
+     */
+    static Result elabora(Config c) throws Exception {
+        // nessun confronto indicato: solo elaborazione Java (destagionalizzazione, workspace e report)
+        boolean verify = c.siticSaFile != null || c.compareWsFile != null;
+        Result result = new Result();
+        result.verified = verify;
+
+        System.out.println("Lettura dati grezzi: " + c.rawDataFile);
+        DataReaderCSV_IstatFormat reader = new DataReaderCSV_IstatFormat();
+        Map<String, TsData> tsDataMap = reader.readData(c.rawDataFile);
+
+        System.out.println("Lettura specifiche: " + c.specFile);
+        List<Map<String, Object>> jsonData = JsonReader.readJsonFile(c.specFile);
+
+        ProcessingContext context = new ProcessingContext();
+        Workspace ws = new Workspace(context);
+        MultiProcessing mp = ws.newMultiProcessing("All");
+        Map<String, TsData> javaSaMap = new LinkedHashMap<>();
+
+        // Report diagnostici (come create_diagnostic_report1/2 in R): DiagnosticReports(outputOnFile, outputOnStrings)
+        DiagnosticReports reports = new DiagnosticReports(c.diagnosticReports, false);
+        if (c.diagnosticReports) {
+            reports.setOutputDir(c.outputDir);
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        mapper.enable(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY);
+        mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
+
+        for (Map<String, Object> data : jsonData) {
+            String seriesName = data.get("series_name").toString();
+            System.out.println("Series Name: " + seriesName);
+
+            TsData raw = tsDataMap.get(seriesName);
+            if (raw == null) {
+                throw new IllegalArgumentException("Serie " + seriesName
+                        + ": presente nelle specifiche JSON ma non nei dati grezzi (" + c.rawDataFile + ")");
+            }
+
+            DestSpecificationsModel model = mapper.readValue(mapper.writeValueAsString(data), DestSpecificationsModel.class);
+            TSmodelSetup tsModelSetup = new TSmodelSetup(model, context, c.regressorsDir + File.separator, raw);
+            TramoSeatsSpecification spec = tsModelSetup.getTsSpec();
+
+            CompositeResults rslt = TramoSeatsProcessingFactory.process(tsModelSetup.getTsData(), spec, context);
+            TsData sa = rslt.getData("sa", TsData.class);
+            TsData cal = rslt.getData("ycal", TsData.class);
+            javaSaMap.put(seriesName, sa);
+            reports.add(seriesName, rslt);
+
+            System.out.println("SA series:");
+            System.out.println(sa);
+            System.out.println("Cal. adjusted series:");
+            System.out.println(cal);
+            System.out.println("_______________________________________________________________");
+
+            mp.add(seriesName, tsModelSetup.getTsData(), spec);
+        }
+
+        String reportCsv = null;
+        String reportTxt = null;
+        if (c.saveOutputs) {
+            File out = new File(c.outputDir);
+            File wsDir = new File(out, "workspace_java");
+            if (!wsDir.isDirectory() && !wsDir.mkdirs()) {
+                throw new IOException("Impossibile creare la cartella di output: " + wsDir);
+            }
+            File wsFile = new File(wsDir, "workspace.xml");
+            if (!ws.save(wsFile.getPath())) {
+                throw new IOException("Salvataggio del workspace non riuscito: " + wsFile);
+            }
+            System.out.println("WS SAVED: " + wsFile);
+            result.workspaceFile = wsFile.getPath();
+            if (c.diagnosticReports) {
+                reports.produce();
+                File problems = new File(out, reports.getProblemsFileName());
+                System.out.println("REPORT DIAGNOSTICI SALVATI: " + problems
+                        + ", " + new File(out, reports.getDetailsFileName()));
+                result.diagnosticReport = problems.getPath();
+            }
+            if (verify) {
+                reportCsv = new File(out, "verifica_sa.csv").getPath();
+                reportTxt = new File(out, "verifica_sa.txt").getPath();
+            }
+        }
+
+        if (!verify) {
+            result.allOk = true;
+            System.out.println("ELABORAZIONE COMPLETATA (nessuna verifica richiesta)");
+            return result;
+        }
+        SaConsistencyCheck check = new SaConsistencyCheck(c.absTol, c.relTolPercent / 100.0);
+        result.allOk = check.run(javaSaMap, c.siticSaFile, c.compareWsFile, reportCsv, reportTxt);
+        result.reportTxt = reportTxt;
+        System.out.println(result.allOk ? "VERIFICA SUPERATA" : "VERIFICA CON DIFFERENZE");
+        return result;
     }
 
     public static void main(String[] args) {

@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>2.2.5.RELEASE</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>it.istat</groupId>
+	<artifactId>KoalaBE</artifactId>
+	<version>1.7.7</version>
+	<packaging>${packaging.type}</packaging>
+	<name>KoalaBE</name>
+	<description>Koala Service for output generation and seasonal adjustment</description>
+	<properties>
+		<maven.compiler.source>1.8</maven.compiler.source>
+		<maven.compiler.target>1.8</maven.compiler.target>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-tomcat</artifactId>
+			<!--scope>provided</scope -->
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.session</groupId>
+			<artifactId>spring-session-core</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-activemq</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-configuration-processor</artifactId>
+		</dependency>
+
+
+		<dependency>
+			<groupId>com.oracle.database.jdbc</groupId>
+			<artifactId>ojdbc8</artifactId>
+			<version>21.7.0.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.querydsl</groupId>
+			<artifactId>querydsl-jpa</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>slf4j-api</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<!-- Actuator -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.fasterxml.jackson.dataformat</groupId>
+			<artifactId>jackson-dataformat-xml</artifactId>
+		</dependency>
+
+		<!-- Springfox -->
+		<dependency>
+			<groupId>io.springfox</groupId>
+			<artifactId>springfox-swagger2</artifactId>
+			<!-- <version>2.9.2</version> -->
+			<version>3.0.0</version>
+		</dependency>
+		<dependency>
+			<groupId>io.springfox</groupId>
+			<artifactId>springfox-swagger-ui</artifactId>
+			<!-- <version>2.9.2</version> -->
+			<version>3.0.0</version>
+
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-devtools</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>it.istat</groupId>
+			<artifactId>SMetaBrowser</artifactId>
+			<version>1.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.5</version>
+		</dependency>
+		<!--
+		https://mvnrepository.com/artifact/org.apache.httpcomponents/httpmime -->
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpmime</artifactId>
+			<version>4.5</version>
+		</dependency>
+		<dependency>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+			<version>2.11.0</version>
+		</dependency>
+
+		<!-- jDemetra toolkit -->
+		<!--
+		https://mvnrepository.com/artifact/eu.europa.ec.joinup.sat/demetra-tstoolkit -->
+		<dependency>
+			<groupId>eu.europa.ec.joinup.sat</groupId>
+			<artifactId>demetra-tstoolkit</artifactId>
+			<version>2.2.4</version>
+		</dependency>
+		<dependency>
+			<groupId>eu.europa.ec.joinup.sat</groupId>
+			<artifactId>demetra-tss</artifactId>
+			<version>2.2.4</version>
+		</dependency>
+		<!--dependency>
+            <groupId>be.nbb.demetra</groupId>
+           <artifactId>demetra-sa-advanced-aggregator</artifactId>
+           <version>2.2.4-RC1</version>
+        </dependency-->
+
+		<dependency>
+			<groupId>be.nbb.demetra</groupId>
+			<artifactId>jdr</artifactId>
+			<version>2.2.5</version>
+			<scope>system</scope>
+			<systemPath>${project.basedir}/lib/jdr-2.2.5.jar</systemPath>
+		</dependency>
+	</dependencies>
+
+	<repositories>
+<!--		<repository>-->
+<!--			<id>jdemetra-releases</id>-->
+<!--			<url>https://oss.sonatype.org/content/repositories/snapshots</url>-->
+<!--		</repository>-->
+		<!--repository>
+            <id>jfrog-maven-mirror</id>
+            <url>https://raw.githubusercontent.com/nbbrd/jfrog-maven-mirror/main</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>netbeans-releases-mirror</id>
+            <url>https://raw.githubusercontent.com/nbbrd/netbeans-maven-mirror/main</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository-->
+	</repositories>
+
+	<build>
+		<plugins>
+			<plugin>
+				<artifactId>maven-war-plugin</artifactId>
+				<configuration>
+					<warName>KoalaBE##${project.version}</warName>
+					<failOnMissingWebXml>false</failOnMissingWebXml>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<!-- include nel pacchetto le dipendenze con scope "system" (lib/jdr-2.2.5.jar),
+					     che altrimenti servono solo alla compilazione: jdr e' usata da DiagnosticReports -->
+					<includeSystemScope>true</includeSystemScope>
+				</configuration>
+			</plugin>
+		</plugins>
+		<finalName>KoalaBE##${version}</finalName>
+	</build>
+
+	<profiles>
+		<profile>
+			<id>dev</id>
+			<activation>
+				<activeByDefault>true</activeByDefault>
+			</activation>
+			<properties>
+				<packaging.type>jar</packaging.type>
+				<spring.profiles.active>dev</spring.profiles.active>
+			</properties>
+		</profile>
+		<profile>
+			<id>sviluppo</id>
+			<properties>
+				<packaging.type>war</packaging.type>
+				<spring.profiles.active>sviluppo</spring.profiles.active>
+				<maven.test.skip>true</maven.test.skip>
+			</properties>
+		</profile>
+		<profile>
+			<id>collaudo</id>			
+			<properties>
+				<packaging.type>war</packaging.type>
+				<spring.profiles.active>collaudo</spring.profiles.active>
+				<maven.test.skip>true</maven.test.skip>
+			</properties>
+		</profile>
+		<profile>
+			<id>produzione</id>
+			<properties>
+				<packaging.type>war</packaging.type>
+				<spring.profiles.active>produzione</spring.profiles.active>
+				<maven.test.skip>true</maven.test.skip>
+			</properties>
+		</profile>
+	</profiles>
+
+</project>

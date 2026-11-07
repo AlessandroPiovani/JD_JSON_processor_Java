@@ -26,19 +26,14 @@ public class Main_with_checks {
     public static void main(String[] args) {
         try {
             DataReaderCSV_IstatFormat reader = new DataReaderCSV_IstatFormat();
+            String localpath_SITIC = "U:\\Desktop\\SINTESI_FAT_2026\\SITIC-FAT";
+            String localpath       = "U:\\Desktop\\SINTESI_FAT_2026";
 
-//            String localpath_SITIC = "U:\\Desktop\\SINTESI_FAT_2026\\SITIC-FAT";
-//            String localpath       = "U:\\Desktop\\SINTESI_FAT_2026";
-
-            String localpath_SITIC = "C:\\Users\\UTENTE\\OneDrive - ISTAT\\Desktop\\SINTESI_FAT_2026\\SITIC-FAT";
-            String localpath       = "C:\\Users\\UTENTE\\OneDrive - ISTAT\\Desktop\\SINTESI_FAT_2026";
-            
-            
             // --- File per la verifica delle serie destagionalizzate ---
             String siticSaFile = localpath_SITIC + "\\sa_new.csv";                              // SA di TS+ (SITIC)
             
-            //String wsLocalFile = localpath + "\\Workspace_container_FAT\\FAT.xml";   // oppure \\output_workspace_container\\workspace.xml
-            String wsLocalFile = localpath + "\\output_workspace_container\\workspace.xml"; // meglio lui perchè non ha risultati pre-salvati
+            String wsLocalFile = localpath + "\\Workspace_container_FAT\\FAT.xml";   // oppure \\output_workspace_container\\workspace.xml
+            //String wsLocalFile = localpath + "\\output_workspace_container\\workspace.xml"; // meglio lui perchè non ha risultati pre-salvati
 
             
             String reportCsv   = localpath + "\\verifica_sa.csv";                              // report per Excel
@@ -68,6 +63,11 @@ public class Main_with_checks {
 
             // Serie destagionalizzate calcolate in Java, per la verifica finale
             Map<String, TsData> javaSaMap = new LinkedHashMap<>();
+
+            // Report diagnostici (come create_diagnostic_report1/2 in R):
+            // DiagnosticReports(outputOnFile, outputOnStrings)
+            DiagnosticReports reports = new DiagnosticReports(true, false);
+            reports.setOutputDir(localpath);   // processing_problems.out e processing_model_details.out
 
             String seriesName = null;
             for (Map<String, Object> data : jsonData) {
@@ -99,6 +99,8 @@ public class Main_with_checks {
 
                 // conservo la serie SA per la verifica
                 javaSaMap.put(seriesName, sa_data);
+                // e gli indicatori per i report diagnostici
+                reports.add(seriesName, rslt);
 
                 System.out.println("SA series:");
                 System.out.println(sa_data);
@@ -118,6 +120,10 @@ public class Main_with_checks {
             } else {
                 System.out.println("ERROR IN SAVING WS");
             }
+
+            // Report diagnostici su file
+            reports.produce();
+            System.out.println("REPORT DIAGNOSTICI SALVATI in " + localpath);
 
             // --- Verifica di coerenza: Java vs TS+ (SITIC) vs workspace locale ---
             // tolleranze: differenza assoluta 0.01 OPPURE relativa 1e-5
