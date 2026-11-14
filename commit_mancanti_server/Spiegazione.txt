@@ -189,4 +189,5 @@ verificata con la libreria 2.2.5: alla prima attivazione in collaudo
 
 @Alessandro: la versione 2.2.5 rispetto alla 2.2.4 ha solo modifiche in jdr, per cui non cambia 
 fra usare demetra-tstoolkit-2.2.4.jar e demetra-tss-2.2.4.jar e 2.2.5. Cambia solo jdr.
+Comunque si potrebbe passare alla 2.2.5 di tutte le librerie per coerenza (ho anche i jar).
 

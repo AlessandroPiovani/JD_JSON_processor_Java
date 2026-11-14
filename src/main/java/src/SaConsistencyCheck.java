@@ -43,14 +43,50 @@ import java.util.regex.Pattern;
  */
 public class SaConsistencyCheck {
 
-    /** Differenza assoluta massima ammessa (es. arrotondamenti nel CSV di TS+). */
+    /** Differenza assoluta massima ammessa (es. arrotondamenti nel CSV di TS+). NaN = criterio disattivato. */
     private final double absTol;
-    /** Differenza relativa massima ammessa (|a-b| / |b|). */
+    /** Differenza relativa massima ammessa (|a-b| / |b|, come frazione). NaN = criterio disattivato. */
     private final double relTol;
 
+    /** Differenza relativa MEDIA massima ammessa sulla serie (frazione). NaN = criterio disattivato. */
+    private final double meanRelTol;
+
+    /** Solo i criteri per periodo (criterio sulla media disattivato). */
     public SaConsistencyCheck(double absTol, double relTol) {
+        this(absTol, relTol, Double.NaN);
+    }
+
+    /**
+     * Criteri per periodo: un periodo e' fuori tolleranza se supera TUTTI i criteri attivi (assoluto e
+     * relativo); coerente se rientra in almeno uno.
+     * Criterio sulla serie: la differenza relativa media della serie non deve superare meanRelTol.
+     * Una serie e' KO se ha periodi fuori tolleranza OPPURE se la sua differenza relativa media supera
+     * la soglia. Double.NaN disattiva un criterio; almeno uno dei tre deve essere attivo.
+     */
+    public SaConsistencyCheck(double absTol, double relTol, double meanRelTol) {
+        if (Double.isNaN(absTol) && Double.isNaN(relTol) && Double.isNaN(meanRelTol)) {
+            throw new IllegalArgumentException("Verifica: attivare almeno una tolleranza");
+        }
         this.absTol = absTol;
         this.relTol = relTol;
+        this.meanRelTol = meanRelTol;
+    }
+
+    /** Almeno un criterio per periodo attivo. */
+    private boolean periodActive() {
+        return absActive() || relActive();
+    }
+
+    private boolean meanActive() {
+        return !Double.isNaN(meanRelTol);
+    }
+
+    private boolean absActive() {
+        return !Double.isNaN(absTol);
+    }
+
+    private boolean relActive() {
+        return !Double.isNaN(relTol);
     }
 
     // ---------------------------------------------------------------------
@@ -88,9 +124,22 @@ public class SaConsistencyCheck {
         txt.clear();
         out("=============== VERIFICA SERIE DESTAGIONALIZZATE ===============");
         out("Data esecuzione: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format(new java.util.Date()));
-        out("Tolleranze: assoluta = " + String.format(Locale.ROOT, "%g", absTol)
-                + ", relativa = " + percent(relTol));
-        out("Un periodo e' coerente se la differenza e' entro la soglia assoluta OPPURE entro quella relativa.");
+        out("Tolleranze: assoluta = " + (absActive() ? String.format(Locale.ROOT, "%g", absTol) : "disattivata")
+                + ", relativa = " + (relActive() ? percent(relTol) : "disattivata"));
+        out("Tolleranza sulla differenza relativa media della serie = "
+                + (meanActive() ? percent(meanRelTol) : "disattivata"));
+        if (absActive() && relActive()) {
+            out("Un periodo e' coerente se la differenza e' entro la soglia assoluta OPPURE entro quella relativa.");
+        } else if (periodActive()) {
+            out("Un periodo e' coerente se la differenza e' entro la soglia " + (absActive() ? "assoluta." : "relativa."));
+        } else {
+            out("Nessun controllo per periodo: decide solo la differenza relativa media.");
+        }
+        if (meanActive()) {
+            out("Una serie e' KO se ha periodi fuori tolleranza OPPURE se la differenza relativa media supera la soglia.");
+        }
+        out("max diff = periodo con la differenza assoluta piu' grande; peggiore = periodo fuori tolleranza"
+                + " con la differenza relativa piu' grande.");
         out("");
 
         // Fonti attive: null = confronto non richiesto
@@ -500,6 +549,11 @@ public class SaConsistencyCheck {
             double abs = Math.abs(va - vb);
             double rel = vb == 0 ? (abs == 0 ? 0 : Double.POSITIVE_INFINITY) : abs / Math.abs(vb);
             d.n++;
+            d.sumAbs += abs;
+            if (!Double.isInfinite(rel)) {   // valore di riferimento 0: escluso dalla media relativa
+                d.sumRel += rel;
+                d.nRel++;
+            }
             if (abs > d.maxAbs) {
                 d.maxAbs = abs;
                 d.maxRel = rel;
@@ -507,8 +561,20 @@ public class SaConsistencyCheck {
                 d.worstA = va;
                 d.worstB = vb;
             }
-            if (abs > absTol && rel > relTol) {
+            // fuori tolleranza = supera tutti i criteri per periodo attivi
+            boolean absOut = !absActive() || abs > absTol;
+            boolean relOut = !relActive() || rel > relTol;
+            if (periodActive() && absOut && relOut) {
                 d.nOut++;
+                d.outPeriods.add(e.getKey());
+                // peggiore tra i periodi fuori: differenza relativa piu' grande (a parita', assoluta)
+                if (d.outPeriod.isEmpty() || rel > d.outRel || (rel == d.outRel && abs > d.outAbs)) {
+                    d.outPeriod = e.getKey();
+                    d.outAbs = abs;
+                    d.outRel = rel;
+                    d.outA = va;
+                    d.outB = vb;
+                }
             }
         }
         for (String k : b.keySet()) {
@@ -519,7 +585,10 @@ public class SaConsistencyCheck {
         if (d.n == 0) {
             d.note = "nessun periodo in comune";
         } else {
-            d.ok = d.nOut == 0;
+            d.meanAbs = d.sumAbs / d.n;
+            d.meanRel = d.nRel > 0 ? d.sumRel / d.nRel : Double.NaN;
+            d.meanOut = meanActive() && !Double.isNaN(d.meanRel) && d.meanRel > meanRelTol;
+            d.ok = d.nOut == 0 && !d.meanOut;
         }
         return d;
     }
@@ -560,6 +629,19 @@ public class SaConsistencyCheck {
         double worstB = Double.NaN;
         boolean ok;
         String note = "";
+        // periodi fuori tolleranza e il peggiore tra questi (differenza relativa piu' grande)
+        final List<String> outPeriods = new ArrayList<>();
+        String outPeriod = "";
+        double outAbs = Double.NaN;
+        double outRel = Double.NaN;
+        double outA = Double.NaN;
+        double outB = Double.NaN;
+        // differenze medie sulla serie (la relativa esclude i periodi con valore di riferimento 0)
+        double sumAbs, sumRel;
+        int nRel;
+        double meanAbs = Double.NaN;
+        double meanRel = Double.NaN;
+        boolean meanOut;
 
         Diff(String series, String what) {
             this.series = series;
@@ -570,9 +652,15 @@ public class SaConsistencyCheck {
             if (!note.isEmpty() && n == 0) {
                 return what + ": " + note;
             }
+            String worstOut = nOut == 0 ? "" : String.format(Locale.ROOT,
+                    " (peggiore %s: %.6f vs %.6f, diff %.6f, rel %s)",
+                    outPeriod.replace("-", "q"), outA, outB, outAbs, percent(outRel));
+            String mean = String.format(Locale.ROOT, ", media diff %.6f (rel %s)%s",
+                    meanAbs, percent(meanRel), meanOut ? " MEDIA OLTRE SOGLIA" : "");
             return String.format(Locale.ROOT,
-                    "%s: %d/%d periodi fuori tolleranza, max diff %.6f (rel %s) in %s (%.6f vs %.6f)%s",
-                    what, nOut, n, maxAbs, percent(maxRel), worstPeriod.replace("-", "q"), worstA, worstB,
+                    "%s: %d/%d periodi fuori tolleranza%s, max diff %.6f (rel %s) in %s (%.6f vs %.6f)%s%s",
+                    what, nOut, n, worstOut, maxAbs, percent(maxRel), worstPeriod.replace("-", "q"), worstA, worstB,
+                    mean,
                     (onlyA + onlyB > 0) ? String.format(" [periodi non comuni: %d / %d]", onlyA, onlyB) : "");
         }
     }
@@ -582,7 +670,10 @@ public class SaConsistencyCheck {
         try (BufferedWriter w = Files.newBufferedWriter(p, StandardCharsets.UTF_8)) {
             w.write("serie;confronto;esito;periodi_comuni;periodi_fuori_tolleranza;solo_prima_fonte;"
                     + "solo_seconda_fonte;max_diff_assoluta;max_diff_relativa_perc;periodo_max_diff;"
-                    + "valore_prima_fonte;valore_seconda_fonte;note");
+                    + "valore_prima_fonte;valore_seconda_fonte;"
+                    + "periodo_peggiore_fuori_tolleranza;valore_prima_fonte_peggiore;valore_seconda_fonte_peggiore;"
+                    + "diff_assoluta_peggiore;diff_relativa_perc_peggiore;periodi_fuori_tolleranza_elenco;"
+                    + "diff_assoluta_media;diff_relativa_media_perc;media_oltre_soglia;note");
             w.newLine();
             for (Diff d : diffs) {
                 w.write(String.join(";",
@@ -598,6 +689,15 @@ public class SaConsistencyCheck {
                         d.worstPeriod.replace("-", "q"),
                         num(d.worstA),
                         num(d.worstB),
+                        d.outPeriod.replace("-", "q"),
+                        num(d.outA),
+                        num(d.outB),
+                        num(d.outAbs),
+                        num(d.outRel * 100),
+                        String.join(" ", d.outPeriods).replace("-", "q"),
+                        num(d.meanAbs),
+                        num(d.meanRel * 100),
+                        d.meanOut ? "SI" : "",
                         d.note));
                 w.newLine();
             }

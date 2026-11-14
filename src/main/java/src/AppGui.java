@@ -69,6 +69,11 @@ public class AppGui extends JFrame {
     private final JTextField outField  = new JTextField(40);
     private final JTextField absTolField = new JTextField("0.01", 8);
     private final JTextField relTolField = new JTextField("0.001", 8);
+    private final JTextField meanTolField = new JTextField("0.001", 8);
+    // un criterio non spuntato e' disattivato. Default: attiva solo la tolleranza relativa per periodo
+    private final JCheckBox absTolOn  = new JCheckBox("assoluta", false);
+    private final JCheckBox relTolOn  = new JCheckBox("relativa (%)", true);
+    private final JCheckBox meanTolOn = new JCheckBox("differenza relativa media (%)", false);
 
     private final JRadioButton onlySitic = new JRadioButton("Solo TS+");
     private final JRadioButton onlyWs    = new JRadioButton("Solo workspace");
@@ -117,14 +122,26 @@ public class AppGui extends JFrame {
 
         // Tolleranze
         JPanel tol = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        tol.add(new JLabel("assoluta"));
+        absTolOn.addActionListener(e -> updateEnabled());
+        relTolOn.addActionListener(e -> updateEnabled());
+        tol.add(absTolOn);
         tol.add(absTolField);
-        tol.add(new JLabel("relativa (%)"));
+        tol.add(relTolOn);
         tol.add(relTolField);
-        JLabel tolHint = new JLabel("un periodo e' coerente se rientra in almeno una delle due");
+        JLabel tolHint = new JLabel("periodo coerente se rientra in almeno una delle soglie attive");
         tolHint.setForeground(HINT);
         tol.add(tolHint);
-        addRow(form, row++, new JLabel("Tolleranze:"), tol, null, null);
+        addRow(form, row++, new JLabel("Tolleranze per periodo:"), tol, null, null);
+
+        // Tolleranza sulla serie
+        JPanel meanTol = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        meanTolOn.addActionListener(e -> updateEnabled());
+        meanTol.add(meanTolOn);
+        meanTol.add(meanTolField);
+        JLabel meanHint = new JLabel("serie KO anche se la media supera la soglia");
+        meanHint.setForeground(HINT);
+        meanTol.add(meanHint);
+        addRow(form, row++, new JLabel("Tolleranza sulla serie:"), meanTol, null, null);
 
         // Salvataggio
         saveBox.addActionListener(e -> updateEnabled());
@@ -234,8 +251,12 @@ public class AppGui extends JFrame {
         siticBrowse.setEnabled(sitic);
         wsField.setEnabled(ws);
         wsBrowse.setEnabled(ws);
-        absTolField.setEnabled(sitic || ws);   // tolleranze: servono solo alla verifica
-        relTolField.setEnabled(sitic || ws);
+        absTolOn.setEnabled(sitic || ws);      // tolleranze: servono solo alla verifica
+        relTolOn.setEnabled(sitic || ws);
+        absTolField.setEnabled((sitic || ws) && absTolOn.isSelected());
+        relTolField.setEnabled((sitic || ws) && relTolOn.isSelected());
+        meanTolOn.setEnabled(sitic || ws);
+        meanTolField.setEnabled((sitic || ws) && meanTolOn.isSelected());
         outField.setEnabled(saveBox.isSelected());
         outBrowse.setEnabled(saveBox.isSelected());
         diagBox.setEnabled(saveBox.isSelected());   // i report vanno nella cartella di output
@@ -306,8 +327,14 @@ public class AppGui extends JFrame {
         c.outputDir     = c.saveOutputs ? requireFile(outField, "Cartella di output", true) : null;
         c.diagnosticReports = c.saveOutputs && diagBox.isSelected();
         if (sitic || ws) {   // le tolleranze servono solo alla verifica
-            c.absTol        = parseNumber(absTolField, "Tolleranza assoluta");
-            c.relTolPercent = parseNumber(relTolField, "Tolleranza relativa (%)");
+            if (!absTolOn.isSelected() && !relTolOn.isSelected() && !meanTolOn.isSelected()) {
+                throw new IllegalArgumentException("Attivare almeno una tolleranza");
+            }
+            // criterio disattivato = NaN (SaConsistencyCheck usa solo l'altro)
+            c.absTol        = absTolOn.isSelected() ? parseNumber(absTolField, "Tolleranza assoluta") : Double.NaN;
+            c.relTolPercent = relTolOn.isSelected() ? parseNumber(relTolField, "Tolleranza relativa (%)") : Double.NaN;
+            c.meanRelTolPercent = meanTolOn.isSelected()
+                    ? parseNumber(meanTolField, "Tolleranza sulla differenza relativa media (%)") : Double.NaN;
         }
         return c;
     }
@@ -389,6 +416,10 @@ public class AppGui extends JFrame {
         outField.setText(prefs.get("out", jarDirectory()));
         absTolField.setText(prefs.get("absTol", "0.01"));
         relTolField.setText(prefs.get("relTol", "0.001"));
+        absTolOn.setSelected(prefs.getBoolean("absTolOn", false));
+        relTolOn.setSelected(prefs.getBoolean("relTolOn", true));
+        meanTolOn.setSelected(prefs.getBoolean("meanTolOn", false));
+        meanTolField.setText(prefs.get("meanTol", "0.001"));
         String mode = prefs.get("mode", "both");
         onlySitic.setSelected("sitic".equals(mode));
         onlyWs.setSelected("ws".equals(mode));
@@ -407,6 +438,10 @@ public class AppGui extends JFrame {
         prefs.put("out", outField.getText().trim());
         prefs.put("absTol", absTolField.getText().trim());
         prefs.put("relTol", relTolField.getText().trim());
+        prefs.putBoolean("absTolOn", absTolOn.isSelected());
+        prefs.putBoolean("relTolOn", relTolOn.isSelected());
+        prefs.putBoolean("meanTolOn", meanTolOn.isSelected());
+        prefs.put("meanTol", meanTolField.getText().trim());
         prefs.put("mode", onlySitic.isSelected() ? "sitic" : onlyWs.isSelected() ? "ws"
                 : noCheck.isSelected() ? "none" : "both");
         prefs.putBoolean("save", saveBox.isSelected());
@@ -438,6 +473,7 @@ public class AppGui extends JFrame {
         public boolean diagnosticReports; // report diagnostici come in R (nella cartella di output)
         public double absTol = 0.01;    // tolleranza assoluta
         public double relTolPercent = 0.001;  // tolleranza relativa, in percentuale
+        public double meanRelTolPercent = Double.NaN;  // tolleranza sulla differenza relativa media, in percentuale (NaN = disattivata)
     }
 
     /** Esito dell'elaborazione. */
@@ -543,7 +579,7 @@ public class AppGui extends JFrame {
             System.out.println("ELABORAZIONE COMPLETATA (nessuna verifica richiesta)");
             return result;
         }
-        SaConsistencyCheck check = new SaConsistencyCheck(c.absTol, c.relTolPercent / 100.0);
+        SaConsistencyCheck check = new SaConsistencyCheck(c.absTol, c.relTolPercent / 100.0, c.meanRelTolPercent / 100.0);
         result.allOk = check.run(javaSaMap, c.siticSaFile, c.compareWsFile, reportCsv, reportTxt);
         result.reportTxt = reportTxt;
         System.out.println(result.allOk ? "VERIFICA SUPERATA" : "VERIFICA CON DIFFERENZE");
