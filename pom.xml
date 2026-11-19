@@ -70,6 +70,7 @@
                 <version>3.5.1</version>
                 <executions>
                     <execution>
+                        <id>app</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
@@ -99,6 +100,36 @@
                             </filters>
                         </configuration>
                     </execution>
+
+                    <!-- secondo JAR: app al posto di R, con due schede (Workspace -> JSON e JSON -> Workspace) -->
+                    <execution>
+                        <id>workspace-json</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>JD_JSON_workspace_json</finalName>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>src.AppWorkspaceJson</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+
                 </executions>
             </plugin>
         </plugins>
