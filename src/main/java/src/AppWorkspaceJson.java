@@ -6,7 +6,9 @@ import ec.satoolkit.algorithm.implementation.TramoSeatsProcessingFactory;
 import ec.satoolkit.tramoseats.TramoSeatsSpecification;
 import ec.tstoolkit.algorithm.CompositeResults;
 import ec.tstoolkit.algorithm.ProcessingContext;
+import ec.tstoolkit.jdr.sa.TramoSeatsResults;
 import ec.tstoolkit.jdr.ws.MultiProcessing;
+import ec.tstoolkit.jdr.ws.SaItem;
 import ec.tstoolkit.jdr.ws.Workspace;
 import ec.tstoolkit.timeseries.simplets.TsData;
 import java.awt.BorderLayout;
@@ -25,12 +27,16 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.prefs.Preferences;
 import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JFileChooser;
@@ -38,6 +44,7 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
@@ -57,6 +64,10 @@ import javax.swing.filechooser.FileNameExtensionFilter;
  *  - "JSON -> Workspace": destagiona le serie con le specifiche JSON (completo o ridotto), i dati
  *    grezzi e i regressori, e salva il workspace e i report diagnostici, come
  *    JD_JSON_file_processor in R. E' la stessa elaborazione di AppGui, senza la verifica.
+ *  - "Execute and compare": esegue un modello NEW e/o un modello OLD, ciascuno da workspace oppure
+ *    da JSON + dati grezzi + regressori; scrive i report diagnostici nelle sottocartelle new e old e
+ *    i grafici delle serie destagionalizzate in comparisons.pdf (new in blu, old in rosso, come
+ *    compare_sa_ts in R), oppure in sa_new.pdf / sa_old.pdf se il modello e' uno solo.
  *
  * Output della scheda "JSON -> Workspace" (nella cartella di output):
  *   workspace_java/workspace.xml                            workspace generato
@@ -96,6 +107,16 @@ public class AppWorkspaceJson extends JFrame {
     private final JButton    openWsDir    = new JButton("Apri cartella di output");
     private final JLabel     wsStatus     = new JLabel(" ");
 
+    // ---- scheda Execute and compare
+    private final ModelPanel newModel = new ModelPanel("new", "Modello NEW");
+    private final ModelPanel oldModel = new ModelPanel("old", "Modello OLD");
+    private final JTextField cmpOutField  = new JTextField(40);
+    private final JButton    cmpButton    = new JButton("Esegui");
+    private final JButton    openPdf      = new JButton("Apri PDF");
+    private final JButton    openCmpDir   = new JButton("Apri cartella di output");
+    private final JLabel     cmpStatus    = new JLabel(" ");
+    private String lastPdf;
+
     private final JTextArea console = new JTextArea(16, 100);
     private String lastDiag;
 
@@ -104,8 +125,9 @@ public class AppWorkspaceJson extends JFrame {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
 
         JTabbedPane tabs = new JTabbedPane();
-        tabs.addTab("Workspace → JSON", buildToJsonTab());
-        tabs.addTab("JSON → Workspace", buildToWsTab());
+        tabs.addTab("Workspace \u2192 JSON", buildToJsonTab());
+        tabs.addTab("JSON \u2192 Workspace", buildToWsTab());
+        tabs.addTab("Execute and compare", buildCompareTab());
 
         console.setEditable(false);
         console.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
@@ -124,7 +146,7 @@ public class AppWorkspaceJson extends JFrame {
         getContentPane().add(split, BorderLayout.CENTER);
 
         loadPrefs();
-        tabs.setSelectedIndex(prefs.getInt("tab", 0));
+        tabs.setSelectedIndex(Math.max(0, Math.min(tabs.getTabCount() - 1, prefs.getInt("tab", 0))));
         tabs.addChangeListener(e -> prefs.putInt("tab", tabs.getSelectedIndex()));
         redirectConsole();
         pack();
@@ -192,6 +214,131 @@ public class AppWorkspaceJson extends JFrame {
         buttons.add(wsStatus);
         addRow(form, row++, new JLabel(""), buttons, null, null);
         return wrap(form);
+    }
+
+    private JPanel buildCompareTab() {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBorder(BorderFactory.createEmptyBorder(4, 8, 8, 8));
+        GridBagConstraints g = new GridBagConstraints();
+        g.gridx = 0;
+        g.fill = GridBagConstraints.HORIZONTAL;
+        g.weightx = 1;
+        g.insets = new Insets(2, 0, 2, 0);
+        g.gridy = 0;
+        p.add(newModel.panel, g);
+        g.gridy = 1;
+        p.add(oldModel.panel, g);
+
+        JPanel form = new JPanel(new GridBagLayout());
+        int row = 0;
+        row = addFileRow(form, row, "Cartella di output:", cmpOutField,
+                "(sottocartelle new e old con i report; comparisons.pdf, sa_new.pdf o sa_old.pdf)", fileButton(cmpOutField, true, null));
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        cmpButton.addActionListener(e -> runCompare());
+        openPdf.setEnabled(false);
+        openPdf.addActionListener(e -> openFile(lastPdf));
+        openCmpDir.setEnabled(false);
+        openCmpDir.addActionListener(e -> openFile(cmpOutField.getText().trim()));
+        cmpStatus.setFont(cmpStatus.getFont().deriveFont(Font.BOLD));
+        buttons.add(cmpButton);
+        buttons.add(openPdf);
+        buttons.add(openCmpDir);
+        buttons.add(cmpStatus);
+        addRow(form, row++, new JLabel(""), buttons, null, null);
+        g.gridy = 2;
+        p.add(form, g);
+        return wrap(p);
+    }
+
+    /** Riquadro di un modello (new o old): da workspace oppure da JSON + dati grezzi + regressori. */
+    private final class ModelPanel {
+        final String key;
+        final JPanel panel = new JPanel(new GridBagLayout());
+        final JCheckBox use;
+        final JRadioButton fromWs = new JRadioButton("da workspace", true);
+        final JRadioButton fromJson = new JRadioButton("da JSON + dati grezzi + regressori");
+        final JTextField ws = new JTextField(40);
+        final JTextField spec = new JTextField(40);
+        final JTextField raw = new JTextField(40);
+        final JTextField regr = new JTextField(40);
+        final JButton wsBtn, specBtn, rawBtn, regrBtn;
+
+        ModelPanel(String key, String title) {
+            this.key = key;
+            panel.setBorder(BorderFactory.createTitledBorder(title));
+            use = new JCheckBox("Usa questo modello", true);
+            ButtonGroup bg = new ButtonGroup();
+            bg.add(fromWs);
+            bg.add(fromJson);
+            JPanel head = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            head.add(use);
+            head.add(fromWs);
+            head.add(fromJson);
+            int row = 0;
+            addRow(panel, row++, new JLabel(""), head, null, null);
+            wsBtn = fileButton(ws, false, "xml");
+            specBtn = fileButton(spec, false, null);
+            rawBtn = fileButton(raw, false, "csv");
+            regrBtn = fileButton(regr, true, null);
+            row = addFileRow(panel, row, "Workspace:", ws, "(file .xml del workspace)", wsBtn);
+            row = addFileRow(panel, row, "Specifiche JSON:", spec, "(completo o ridotto)", specBtn);
+            row = addFileRow(panel, row, "Dati grezzi:", raw, "(es. grezzi.csv)", rawBtn);
+            row = addFileRow(panel, row, "Cartella regressori:", regr, "(es. cartella regr)", regrBtn);
+            use.addActionListener(e -> update());
+            fromWs.addActionListener(e -> update());
+            fromJson.addActionListener(e -> update());
+        }
+
+        void update() {
+            boolean on = use.isSelected();
+            boolean w = on && fromWs.isSelected();
+            boolean j = on && fromJson.isSelected();
+            fromWs.setEnabled(on);
+            fromJson.setEnabled(on);
+            ws.setEnabled(w);
+            wsBtn.setEnabled(w);
+            for (JTextField f : new JTextField[]{spec, raw, regr}) f.setEnabled(j);
+            for (JButton b : new JButton[]{specBtn, rawBtn, regrBtn}) b.setEnabled(j);
+        }
+
+        /** Dati del modello per l'elaborazione (null se il modello non e' usato). */
+        ModelInput read() {
+            if (!use.isSelected()) {
+                return null;
+            }
+            String name = "new".equals(key) ? "Modello NEW" : "Modello OLD";
+            ModelInput in = new ModelInput();
+            in.key = key;
+            in.fromWorkspace = fromWs.isSelected();
+            if (in.fromWorkspace) {
+                in.workspace = requireFile(ws, name + " - Workspace", false);
+            } else {
+                in.spec = requireFile(spec, name + " - Specifiche JSON", false);
+                in.raw = requireFile(raw, name + " - Dati grezzi", false);
+                in.regr = requireFile(regr, name + " - Cartella regressori", true);
+            }
+            return in;
+        }
+
+        void load() {
+            use.setSelected(prefs.getBoolean(key + ".use", true));
+            fromJson.setSelected(prefs.getBoolean(key + ".json", false));
+            fromWs.setSelected(!fromJson.isSelected());
+            ws.setText(prefs.get(key + ".ws", ""));
+            spec.setText(prefs.get(key + ".spec", ""));
+            raw.setText(prefs.get(key + ".raw", ""));
+            regr.setText(prefs.get(key + ".regr", ""));
+            update();
+        }
+
+        void save() {
+            prefs.putBoolean(key + ".use", use.isSelected());
+            prefs.putBoolean(key + ".json", fromJson.isSelected());
+            prefs.put(key + ".ws", ws.getText().trim());
+            prefs.put(key + ".spec", spec.getText().trim());
+            prefs.put(key + ".raw", raw.getText().trim());
+            prefs.put(key + ".regr", regr.getText().trim());
+        }
     }
 
     /** Tiene il modulo in alto nella scheda. */
@@ -335,13 +482,6 @@ public class AppWorkspaceJson extends JFrame {
      */
     static String createWorkspace(String rawDataFile, String regressorsDir, String specFile,
             String outputDir, boolean diagnosticReports) throws Exception {
-        System.out.println("Lettura dati grezzi: " + rawDataFile);
-        DataReaderCSV_IstatFormat reader = new DataReaderCSV_IstatFormat();
-        Map<String, TsData> tsDataMap = reader.readData(rawDataFile);
-
-        System.out.println("Lettura specifiche: " + specFile);
-        List<Map<String, Object>> jsonData = JsonReader.readJsonFile(specFile);
-
         ProcessingContext context = new ProcessingContext();
         Workspace ws = new Workspace(context);
         MultiProcessing mp = ws.newMultiProcessing("All");
@@ -350,12 +490,187 @@ public class AppWorkspaceJson extends JFrame {
         if (diagnosticReports) {
             reports.setOutputDir(outputDir);
         }
+        List<String> names = processJson(rawDataFile, regressorsDir, specFile, context, (seriesName, data, spec, rslt) -> {
+            reports.add(seriesName, rslt);
+            mp.add(seriesName, data, spec);
+        });
+        int nSeries = names.size();
+
+        File out = new File(outputDir);
+        File wsDir = new File(out, "workspace_java");
+        if (!wsDir.isDirectory() && !wsDir.mkdirs()) {
+            throw new IOException("Impossibile creare la cartella di output: " + wsDir);
+        }
+        File wsFile = new File(wsDir, "workspace.xml");
+        if (!ws.save(wsFile.getPath())) {
+            throw new IOException("Salvataggio del workspace non riuscito: " + wsFile);
+        }
+        System.out.println(nSeries + " serie. WS SAVED: " + wsFile);
+
+        String problems = null;
+        if (diagnosticReports) {
+            reports.produce();
+            problems = new File(out, reports.getProblemsFileName()).getPath();
+            System.out.println("REPORT DIAGNOSTICI SALVATI: " + problems
+                    + ", " + new File(out, reports.getDetailsFileName()));
+        }
+        System.out.println("_______________________________________________________________");
+        return problems;
+    }
+
+    // ------------------------------------------------------------------ Execute and compare
+
+    private void runCompare() {
+        final ModelInput nIn, oIn;
+        final String outDir;
+        try {
+            nIn = newModel.read();
+            oIn = oldModel.read();
+            if (nIn == null && oIn == null) {
+                throw new IllegalArgumentException("Scegliere almeno un modello (NEW o OLD)");
+            }
+            outDir = requireFile(cmpOutField, "Cartella di output", true);
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Dati mancanti o non validi", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        savePrefs();
+        openPdf.setEnabled(false);
+        lastPdf = null;
+        run(cmpButton, openCmpDir, cmpStatus, () -> {
+            File pdf = executeAndCompare(nIn, oIn, new File(outDir));
+            lastPdf = pdf.getPath();
+            SwingUtilities.invokeLater(() -> openPdf.setEnabled(true));
+            return nIn != null && oIn != null ? "CONFRONTO COMPLETATO" : "ELABORAZIONE COMPLETATA";
+        });
+    }
+
+    /** Un modello da eseguire: da workspace oppure da JSON + dati grezzi + regressori. */
+    static final class ModelInput {
+        String key;             // "new" oppure "old": nome della sottocartella e del PDF
+        boolean fromWorkspace;
+        String workspace;
+        String spec, raw, regr;
+    }
+
+    /**
+     * Esegue i modelli indicati (uno o entrambi). Per ciascuno scrive i report diagnostici nella
+     * sottocartella new / old. Poi i grafici delle serie destagionalizzate: comparisons.pdf se ci sono
+     * entrambi i modelli (new in blu, old in rosso, come compare_sa_ts in R), altrimenti sa_new.pdf o
+     * sa_old.pdf. Restituisce il file PDF.
+     */
+    static File executeAndCompare(ModelInput newIn, ModelInput oldIn, File outDir) throws Exception {
+        Map<String, TsData> newSa = newIn == null ? null : executeModel(newIn, new File(outDir, "new"));
+        Map<String, TsData> oldSa = oldIn == null ? null : executeModel(oldIn, new File(outDir, "old"));
+
+        String pdfName = newSa != null && oldSa != null ? "comparisons.pdf" : newSa != null ? "sa_new.pdf" : "sa_old.pdf";
+        File pdf = new File(outDir, pdfName);
+        SaPlotsPdf.write(pdf, newSa, oldSa);
+        if (newSa != null && oldSa != null) {
+            int common = 0;
+            for (String s : newSa.keySet()) if (oldSa.containsKey(s)) common++;
+            System.out.println("Serie: " + newSa.size() + " nel modello NEW, " + oldSa.size() + " nel modello OLD, "
+                    + common + " in entrambi");
+            if (common < newSa.size() || common < oldSa.size()) {
+                System.out.println("ATTENZIONE: alcune serie sono in un solo modello: nel PDF hanno una sola linea");
+            }
+        }
+        System.out.println("GRAFICI SALVATI: " + pdf);
+        System.out.println("_______________________________________________________________");
+        return pdf;
+    }
+
+    /** Esegue un modello e scrive i suoi report diagnostici in dir; restituisce le serie destagionalizzate. */
+    static Map<String, TsData> executeModel(ModelInput in, File dir) throws Exception {
+        String label = "Modello " + in.key.toUpperCase(Locale.ROOT);
+        System.out.println("=== " + label + (in.fromWorkspace ? " da workspace: " + in.workspace : " da JSON: " + in.spec));
+        if (!dir.isDirectory() && !dir.mkdirs()) {
+            throw new IOException("Impossibile creare la cartella di output: " + dir);
+        }
+        DiagnosticReports reports = new DiagnosticReports(true, false);
+        reports.setOutputDir(dir.getPath());
+        Map<String, TsData> sa = new LinkedHashMap<>();
+
+        if (in.fromWorkspace) {
+            // come compare_sa_ts in R: si calcola il workspace e si leggono i risultati (prima elaborazione)
+            Workspace ws = Workspace.open(in.workspace);
+            if (ws == null || ws.getMultiProcessingCount() == 0) {
+                throw new IOException(label + ": workspace vuoto o non leggibile: " + in.workspace);
+            }
+            if (ws.getMultiProcessingCount() > 1) {
+                System.out.println("ATTENZIONE: il workspace contiene " + ws.getMultiProcessingCount()
+                        + " elaborazioni (SAProcessing): come in R viene letta solo la prima");
+            }
+            ws.computeAll();
+            MultiProcessing mp = ws.getMultiProcessing(0);
+            for (int k = 0; k < mp.size(); k++) {
+                SaItem item = mp.get(k);
+                String name = item.getSaDefinition().getTs() == null ? "" : item.getSaDefinition().getTs().getName();
+                name = name == null ? "" : name.replaceFirst("(?s)^.*\n", "");
+                Object r = item.getResults();
+                if (!(r instanceof TramoSeatsResults)) {
+                    System.out.println("ATTENZIONE: serie " + name + " senza risultati TRAMO-SEATS, ignorata");
+                    continue;
+                }
+                if (sa.containsKey(name)) {
+                    System.out.println("ATTENZIONE: serie " + name + " presente piu' volte, uso la prima");
+                    continue;
+                }
+                TramoSeatsResults tr = (TramoSeatsResults) r;
+                TsData s = tr.getData("sa", TsData.class);
+                if (s == null) {
+                    System.out.println("ATTENZIONE: serie " + name + " senza serie destagionalizzata, ignorata");
+                    continue;
+                }
+                System.out.println("Series Name: " + name);
+                reports.add(name, tr);
+                sa.put(name, s);
+            }
+        } else {
+            processJson(in.raw, in.regr, in.spec, new ProcessingContext(), (seriesName, data, spec, rslt) -> {
+                TsData s = rslt == null ? null : rslt.getData("sa", TsData.class);
+                if (s == null) {
+                    System.out.println("ATTENZIONE: serie " + seriesName + " senza serie destagionalizzata, ignorata");
+                    return;
+                }
+                if (sa.containsKey(seriesName)) {
+                    System.out.println("ATTENZIONE: serie " + seriesName + " presente piu' volte, uso la prima");
+                    return;
+                }
+                reports.add(seriesName, rslt);
+                sa.put(seriesName, s);
+            });
+        }
+        reports.produce();
+        System.out.println(label + ": " + sa.size() + " serie. REPORT DIAGNOSTICI SALVATI: "
+                + new File(dir, reports.getProblemsFileName()) + ", " + new File(dir, reports.getDetailsFileName()));
+        return sa;
+    }
+
+    /** Cosa fare con ogni serie elaborata da processJson. */
+    interface SeriesSink {
+        void accept(String seriesName, TsData data, TramoSeatsSpecification spec, CompositeResults rslt) throws Exception;
+    }
+
+    /**
+     * Destagiona le serie del JSON (completo o ridotto) con i dati grezzi e i regressori, come AppGui.
+     * Per ogni serie chiama sink con i dati usati, la specifica e i risultati. Restituisce i nomi delle serie.
+     */
+    static List<String> processJson(String rawDataFile, String regressorsDir, String specFile,
+            ProcessingContext context, SeriesSink sink) throws Exception {
+        System.out.println("Lettura dati grezzi: " + rawDataFile);
+        DataReaderCSV_IstatFormat reader = new DataReaderCSV_IstatFormat();
+        Map<String, TsData> tsDataMap = reader.readData(rawDataFile);
+
+        System.out.println("Lettura specifiche: " + specFile);
+        List<Map<String, Object>> jsonData = JsonReader.readJsonFile(specFile);
 
         ObjectMapper mapper = new ObjectMapper();
         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         mapper.enable(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY);
         mapper.enable(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT);
 
+        List<String> names = new ArrayList<>();
         for (Map<String, Object> data : jsonData) {
             String seriesName = data.get("series_name").toString();
             System.out.println("Series Name: " + seriesName);
@@ -371,30 +686,10 @@ public class AppWorkspaceJson extends JFrame {
             TramoSeatsSpecification spec = tsModelSetup.getTsSpec();
 
             CompositeResults rslt = TramoSeatsProcessingFactory.process(tsModelSetup.getTsData(), spec, context);
-            reports.add(seriesName, rslt);
-            mp.add(seriesName, tsModelSetup.getTsData(), spec);
+            sink.accept(seriesName, tsModelSetup.getTsData(), spec, rslt);
+            names.add(seriesName);
         }
-
-        File out = new File(outputDir);
-        File wsDir = new File(out, "workspace_java");
-        if (!wsDir.isDirectory() && !wsDir.mkdirs()) {
-            throw new IOException("Impossibile creare la cartella di output: " + wsDir);
-        }
-        File wsFile = new File(wsDir, "workspace.xml");
-        if (!ws.save(wsFile.getPath())) {
-            throw new IOException("Salvataggio del workspace non riuscito: " + wsFile);
-        }
-        System.out.println(jsonData.size() + " serie. WS SAVED: " + wsFile);
-
-        String problems = null;
-        if (diagnosticReports) {
-            reports.produce();
-            problems = new File(out, reports.getProblemsFileName()).getPath();
-            System.out.println("REPORT DIAGNOSTICI SALVATI: " + problems
-                    + ", " + new File(out, reports.getDetailsFileName()));
-        }
-        System.out.println("_______________________________________________________________");
-        return problems;
+        return names;
     }
 
     // ------------------------------------------------------------------ esecuzione in background
@@ -500,6 +795,9 @@ public class AppWorkspaceJson extends JFrame {
         specField.setText(prefs.get("spec", ""));
         wsOutField.setText(prefs.get("wsOut", jar));
         diagBox.setSelected(prefs.getBoolean("diag", true));
+        newModel.load();
+        oldModel.load();
+        cmpOutField.setText(prefs.get("cmpOut", jar));
     }
 
     private void savePrefs() {
@@ -515,6 +813,9 @@ public class AppWorkspaceJson extends JFrame {
         prefs.put("spec", specField.getText().trim());
         prefs.put("wsOut", wsOutField.getText().trim());
         prefs.putBoolean("diag", diagBox.isSelected());
+        newModel.save();
+        oldModel.save();
+        prefs.put("cmpOut", cmpOutField.getText().trim());
     }
 
     private static String jarDirectory() {
